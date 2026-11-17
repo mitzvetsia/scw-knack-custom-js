@@ -166,6 +166,78 @@ ns.data.readRecords = vk => (vk === 'view_3962' ? [rec('z1', [])] : vk === 'view
 ns.sowFilter.mount('view_3962');
 check('no SOW on any record: no pills and no context bar', [!!P.querySelector('.scw-ws-v2-sow-pills'), !!P.querySelector('.scw-ws-v2-sowctx'), P.classList.contains('scw-ws-v2--sowctx')], [false, false, false]);
 
+// ── a choice that matches no line item is not applied (2026-11-17, Toyota SOW 2136) ──────────
+// "(no SOW)" was picked while a cloned SOW still had unassigned lines. Once every line had its SOW
+// the page read "No SOW designated · 0 line items", the worksheet was empty, and with ONE scope on
+// the project the bar drew no tabs — no way back to the SOW's items.
+const setRecs = (list) => { window.Knack.views.view_3962.model.data.models = list.map(r => ({ attributes: r }));
+  ns.data.readRecords = vk => (vk === 'view_3962' ? list : vk === 'view_3586' ? sowPage : []); };
+const mode = () => { const b = P.querySelector(':scope > .scw-ws-v2-sowctx'); return b ? b.getAttribute('data-scw-ws-v2-sowctx-mode') : null; };
+const tabTexts = () => [...P.querySelectorAll('[data-scw-ws-v2-sowctx-tab]')].map(t => txt(t) + (t.classList.contains('is-on') ? ' *' : ''));
+try { window.localStorage.clear(); window.sessionStorage.clear(); } catch (e) {}
+let one = [rec('t1', [A]), rec('t2', [A]), rec('t3', [])];
+setRecs(one);
+ns.sowFilter.mount('view_3962');
+check('one SOW + an unassigned line: the bar offers the SOW and a (no SOW) tab',
+  [mode(), tabTexts()], ['only', ['SW1334 2', '(no SOW) 1']]);
+P.querySelector('[data-scw-ws-v2-sowctx-tab="__blank"]').dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+check('picking (no SOW) shows only the unassigned line, with the tabs to leave it',
+  [mode(), ns.sowFilter.loadActive('view_3962'), ns.sowFilter.filterRecords('view_3962', one).map(r => r.id), tabTexts(), P.getAttribute('data-scw-ws-v2-sow-filter')],
+  ['blank', ['__blank'], ['t3'], ['SW1334 2', '(no SOW) 1 *'], '__blank']);
+one = [rec('t1', [A]), rec('t2', [A]), rec('t3', [A])];   // the last unassigned line gets its SOW
+setRecs(one);
+ns.sowFilter.mount('view_3962');
+check('nothing unassigned any more: the (no SOW) pick is not applied — the bar names the only SOW, every line shows, no filter attribute, no (blank) pill lit',
+  [mode(), txt(P.querySelector('.scw-ws-v2-sowctx-tok')), txt(P.querySelector('.scw-ws-v2-sowctx-meta')), ns.sowFilter.filterRecords('view_3962', one).map(r => r.id),
+   ns.sowFilter.effectiveActive('view_3962'), P.hasAttribute('data-scw-ws-v2-sow-filter'), P.classList.contains('scw-ws-v2--sow-blank'),
+   !!P.querySelector('.scw-ws-v2-sow-pill--blank.scw-ws-v2-sow-pill--active'), ns.sowContext.describe('view_3962')],
+  ['only', 'SW1334', '3 line items · the only scope on this project', ['t1', 't2', 't3'], [], false, false, false, '']);
+check('while the page cannot say it holds every record (no server total) the pick is only left unapplied: still stored, and back the moment a line is unassigned',
+  [ns.sowFilter.loadActive('view_3962'),
+   (one = one.concat([rec('t4', [])]), setRecs(one), ns.sowFilter.mount('view_3962'), mode()), ns.sowFilter.filterRecords('view_3962', one).map(r => r.id)],
+  [['__blank'], 'blank', ['t4']]);
+// with the complete record set on the page a pick that matches nothing is over: retired from storage
+const total = (n) => { window.Knack.views.view_3962.model.data.total_records = n; };
+one = [rec('t1', [A]), rec('t2', [A]), rec('t3', [A])];
+setRecs(one); total(5);
+ns.sowFilter.mount('view_3962');
+check('a partly loaded grid (3 of 5 records) never retires the pick', [mode(), ns.sowFilter.loadActive('view_3962')], ['only', ['__blank']]);
+total(3);
+window.location.hash = '#k2-build-sows/project-details/6a2c00010000000000001111/?view_3962_filters=%5B%5D';
+ns.sowFilter.setActive('view_3962', ['__blank']);
+ns.sowFilter.mount('view_3962');
+check('a native Knack filter on the view (the model is a subset) never retires it either', [mode(), ns.sowFilter.loadActive('view_3962')], ['only', ['__blank']]);
+window.location.hash = '#k2-build-sows/project-details/6a2c00010000000000001111/';
+ns.sowFilter.mount('view_3962');
+check('every record on the page and nothing unassigned: the pick is retired, so a line that loses its SOW later does not take the page over',
+  [mode(), ns.sowFilter.loadActive('view_3962'),
+   (one = one.concat([rec('t4', [])]), setRecs(one), total(4), ns.sowFilter.mount('view_3962'), mode()), tabTexts(), ns.sowFilter.filterRecords('view_3962', one).length],
+  ['only', [], 'only', ['SW1334 3', '(no SOW) 1'], 4]);
+total(undefined);
+// a SOW no line item is on any more (deleted / consolidated), on a project left with one scope
+one = [rec('t1', [A]), rec('t2', [A])];
+setRecs(one);
+ns.sowFilter.setActive('view_3962', [B]);
+ns.sowFilter.mount('view_3962');
+check('a stored SOW that no line item is on any more is not applied either: the only scope shows with its lines (it used to read "2 line items" over an empty worksheet)',
+  [mode(), ns.sowFilter.loadActive('view_3962'), ns.sowFilter.effectiveActive('view_3962'), ns.sowFilter.filterRecords('view_3962', one).map(r => r.id)],
+  ['only', [B], [], ['t1', 't2']]);
+// 2+ scopes: the dead (no SOW) pick falls back to the chooser; beside a live scope it is simply dropped
+let two = [rec('u1', [A]), rec('u2', [B])];
+setRecs(two);
+ns.sowFilter.setActive('view_3962', ['__blank']);
+ns.sowFilter.mount('view_3962');
+check('two scopes and a (no SOW) pick with nothing unassigned: the chooser asks again (as if never chosen)',
+  [mode(), P.classList.contains('scw-ws-v2--sow-unchosen'), ns.sowFilter.filterRecords('view_3962', two).length], ['unchosen', true, 2]);
+ns.sowFilter.setActive('view_3962', ['__blank', A]);
+ns.sowFilter.mount('view_3962');
+check('(no SOW) + a scope with nothing unassigned: plain single scope, not "mixed"; a shift-click builds on what applies',
+  [mode(), ns.sowFilter.filterRecords('view_3962', two).map(r => r.id),
+   (P.querySelector('[data-scw-ws-v2-sowctx-tab="' + B + '"]').dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true, shiftKey: true })),
+    ns.sowFilter.loadActive('view_3962').slice().sort())],
+  ['single', ['u1'], [A, B].sort()]);
+try { window.localStorage.clear(); window.sessionStorage.clear(); } catch (e) {}
+
 // ── SOW page: this SOW + its siblings ─────────────────────────────────────────────────────────
 document.body.id = 'knack-body scene_1116';
 const S = panel('view_3586');

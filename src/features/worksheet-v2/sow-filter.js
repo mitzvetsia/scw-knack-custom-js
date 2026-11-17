@@ -119,6 +119,73 @@
     storeSet('localStorage', key, val || null);
   }
 
+  /** The stored choice as the page can APPLY it right now. A choice that
+   *  matches no record is not applied — it would leave an empty worksheet,
+   *  and on a page with one scope there are no tabs to leave it by
+   *  (2026-11-17, Toyota: "(no SOW)" was picked while the clone still had
+   *  unassigned lines; once every line had its SOW the page read "No SOW
+   *  designated · 0 line items" with no way back to SOW 2136):
+   *    • "(no SOW)" / "(no bid)" counts only while some record is unassigned;
+   *    • a SOW no record connects to any more (deleted, consolidated) is
+   *      skipped. On a listAll view (the survey page's bids) an id with no
+   *      records is KEPT: it may be a variant bid that has no items yet.
+   *  This function erases nothing (the 2026-10-22 rule: what the models show
+   *  at one instant never rewrites the choice). mount() retires a dead pick
+   *  only once recordsComplete() says the page holds every record. `records`
+   *  = the view's records (read from the data layer when omitted). */
+  function effectiveActive(viewKey, records) {
+    var stored = loadActive(viewKey);
+    if (!stored.length || stored.indexOf(ALL) !== -1) return stored;
+    if (!records) {
+      try { records = (ns.data && typeof ns.data.readRecords === 'function') ? ns.data.readRecords(viewKey) : []; }
+      catch (e) { records = []; }
+    }
+    return effectiveFrom(viewKey, stored, visibleRecords(viewKey, records || []));
+  }
+  /** Does the page hold the view's COMPLETE record set? Knack's own server
+   *  total says so; an unknown total, a partly loaded grid, or a native Knack
+   *  filter / search on the view (the model is then a subset) all answer no.
+   *  Only then may mount() retire a stored pick that matches nothing — until
+   *  then the pick is merely not applied. */
+  function recordsComplete(viewKey) {
+    try {
+      var v = window.Knack && Knack.views && Knack.views[viewKey];
+      var d = v && v.model && v.model.data;
+      if (!d || !d.models) return false;
+      var total = d.total_records != null ? d.total_records
+        : (d.pagination_meta && d.pagination_meta.total_records);
+      if (total == null || isNaN(Number(total))) return false;
+      if (d.models.length < Number(total)) return false;
+      var addr = String(window.location.hash || '') + String(window.location.search || '');
+      if (new RegExp('[?&]' + viewKey + '_(filters|search)=').test(addr)) return false;
+      return true;
+    } catch (e) { return false; }
+  }
+  function effectiveFrom(viewKey, stored, recs) {
+    var spec = filterSpec(viewKey);
+    var SOWK = spec.fieldKey + '_raw';
+    var want = Object.create(null), found = Object.create(null);
+    var wantN = 0, foundN = 0, i, j;
+    for (i = 0; i < stored.length; i++) if (!want[stored[i]]) { want[stored[i]] = true; wantN++; }
+    for (i = 0; i < recs.length && foundN < wantN; i++) {
+      var raw = recs[i] && recs[i][SOWK];
+      if (!Array.isArray(raw) || !raw.length) {
+        if (want[BLANK] && !found[BLANK]) { found[BLANK] = true; foundN++; }
+        continue;
+      }
+      for (j = 0; j < raw.length; j++) {
+        var id = raw[j] && raw[j].id;
+        if (id && want[id] && !found[id]) { found[id] = true; foundN++; }
+      }
+    }
+    if (foundN === wantN) return stored;
+    return stored.filter(function (sid) {
+      if (found[sid]) return true;
+      if (sid === BLANK) return false;
+      return !!spec.listAll;
+    });
+  }
+
   function stripHtml(s) {
     return String(s == null ? '' : s).replace(/<[^>]*>/g, '').trim();
   }
@@ -348,6 +415,11 @@
     records = visibleRecords(viewKey, records || []);
     var active = loadActive(viewKey);
     if (!active.length || active.indexOf(ALL) !== -1) return records;
+    // Only what the page can apply: a choice that matches no record is as
+    // good as no choice (effectiveActive), so the worksheet is never emptied
+    // by a "(no SOW)" pick once nothing is unassigned.
+    active = effectiveFrom(viewKey, active, records);
+    if (!active.length) return records;
     var activeSet = Object.create(null);
     var blankActive = false;
     for (var a = 0; a < active.length; a++) {
@@ -441,7 +513,14 @@
     }
     var kept = stored.filter(function (id) { return !coIds[id]; });
     if (kept.length !== stored.length) saveActive(viewKey, kept);
-    var active = kept.filter(function (id) { return valid[id]; });
+    // The display follows what the page can apply (effectiveActive): a
+    // "(blank)" pick with nothing unassigned lights no pill. With the whole
+    // record set on the page such a pick is over, so it is retired — left
+    // stored it would take the worksheet over again, with no click, the day
+    // a line loses its SOW. On a partial set it is only left unapplied.
+    var live = effectiveActive(viewKey);
+    if (live.length < kept.length && recordsComplete(viewKey)) saveActive(viewKey, live);
+    var active = live.filter(function (id) { return valid[id]; });
     applyFilter(container, active, viewKey);
 
     if (!strip.hasAttribute('data-scw-bound')) {
@@ -452,7 +531,7 @@
         var id = pill.getAttribute('data-scw-ws-v2-sow-pill');
         // Build from the ids the strip shows: a stored id the list lacks right
         // now (see mount) must not ride along into the user's new choice.
-        var current = loadActive(viewKey).filter(function (s) { return s !== ALL && valid[s]; });
+        var current = effectiveActive(viewKey).filter(function (s) { return s !== ALL && valid[s]; });
         var next;
         if (id === '__all') {
           // A view that requires a scope choice remembers "all" explicitly.
@@ -534,6 +613,7 @@
     mount:          mount,
     filterSpec:     filterSpec,
     loadActive:     loadActive,
+    effectiveActive: effectiveActive,
     setActive:      setActive,
     collectSowList: collectSowList,
     filterRecords:  filterRecords,

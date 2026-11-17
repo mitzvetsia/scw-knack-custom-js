@@ -339,7 +339,12 @@
     }
     classify(sows, cfg.kind);
     stampListMeta(sows, cfg);
-    var stored = (typeof sf.loadActive === 'function' ? sf.loadActive(viewKey) : []) || [];
+    // The choice as the page can apply it (sow-filter.js effectiveActive): a
+    // "(no SOW)" pick with nothing unassigned, or a SOW no line item is on any
+    // more, is not a choice — the same rule the filter applies, so the bar and
+    // the worksheet body can never disagree.
+    var stored = (typeof sf.effectiveActive === 'function' ? sf.effectiveActive(viewKey, readRecords(viewKey))
+                : typeof sf.loadActive === 'function' ? sf.loadActive(viewKey) : []) || [];
     var real = [], all = false, blank = false;
     for (var a = 0; a < stored.length; a++) {
       if (stored[a] === ALL) all = true;
@@ -657,7 +662,9 @@
       listed[BLANK] = true;
       var listNow = (ns.sowFilter && typeof ns.sowFilter.collectSowList === 'function') ? (ns.sowFilter.collectSowList(viewKey) || []) : [];
       for (var li = 0; li < listNow.length; li++) listed[listNow[li].id] = true;
-      var current = (ns.sowFilter && ns.sowFilter.loadActive(viewKey) || []).filter(function (x) { return x !== ALL && listed[x]; });
+      var sfNow = ns.sowFilter;
+      var storedNow = (sfNow && (typeof sfNow.effectiveActive === 'function' ? sfNow.effectiveActive(viewKey) : sfNow.loadActive(viewKey))) || [];
+      var current = storedNow.filter(function (x) { return x !== ALL && listed[x]; });
       var additive = !!(e.shiftKey || e.metaKey || e.ctrlKey) && t.hasAttribute('data-scw-ws-v2-sowctx-tab');
       var next;
       if (additive) {

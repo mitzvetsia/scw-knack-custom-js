@@ -1866,6 +1866,19 @@ true, and nothing said "you are on SW1589 — Alternate"). A **sticky bar above 
   dropped as stale. New mode `only` (one scope / bid on the page): the bar states it calmly — white, no
   tabs, no chooser — where it used to carry the amber "all" styling. `statusField` reads only when
   view_3507 serves that column (Builder: add Bid status `field_2550` to view_3507 for the chip).
+- **A choice that matches no line item is not applied (2026-11-17 — Toyota, "why am I seeing only the
+  option for 'no sow' and no option to see items that are on 2136?")**: "(no SOW)" had been picked while a
+  cloned SOW still had unassigned lines; once all 383 lines were on SOW 2136 the stored `__blank` emptied the
+  worksheet, the bar read "No SOW designated · 0 line items · click a scope tab", and with ONE scope on the
+  project it draws no tabs (and the pills strip is hidden under the bar) — no way out. `sow-filter.js`
+  `effectiveActive(viewKey, records)` is the stored choice as the page can apply it: `__blank` counts only
+  while some record is unassigned, and a SOW no record is on any more is skipped (on a `listAll` view — the
+  survey page's bids — an id with no records is kept: it may be a variant with no items yet). `filterRecords`,
+  the pill states and `sow-context.js projectInfo` all read it, so the bar and the body cannot disagree (the
+  same hole existed for a deleted SOW on a one-scope project: "N line items" over an empty worksheet). It
+  erases nothing; `mount()` retires a dead pick from storage only when `recordsComplete(viewKey)` (loaded ≥
+  Knack's server total, no native `view_XXXX_filters` / `_search` in the address), so a retired pick cannot
+  take the page over the day a line loses its SOW, and a partial load never clears a live one.
 - Tests: `tests/worksheet-v2/test-sow-context.js`, `tests/worksheet-v2/test-bid-context.js`.
 
 ## Reconcile Bids header rework (live 2026-10-09) — `src/features/bid-review-v2/header.js`
