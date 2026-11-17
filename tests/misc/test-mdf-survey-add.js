@@ -188,6 +188,17 @@ const clickAdd = () => $m('[data-act="add"]').click();
   document.querySelector('.scw-mst-overlay [data-act="cancel"]').click();
   window.Knack.views.view_3504 = savedReq;
 
+  // ── the button no longer needs the old native page's menu (view_3509) ──
+  const html = (k) => { const b = ns.toolbar._build(k); return typeof b === 'string' ? b : (b && b.outerHTML) || ''; };
+  const hasAddMdf = (k) => /data-scw-ws-v2-action="add-mdf"/.test(html(k));
+  check('with the menu on the page: the button renders and the menu is hidden',
+    [hasAddMdf('view_3505'), document.getElementById('view_3509').style.display], [true, 'none']);
+  document.getElementById('view_3509').remove();
+  check('menu view deleted in Builder: the button still renders (the modal needs no menu)', hasAddMdf('view_3505'), true);
+  window.SCW.CONFIG.MAKE_MDF_IDF_WEBHOOK = 'PLACEHOLDER';
+  check('… but with no hook and no menu there is nothing to open, so no button', hasAddMdf('view_3505'), false);
+  window.SCW.CONFIG.MAKE_MDF_IDF_WEBHOOK = 'https://hook.us1.make.com/create';
+
   console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
   process.exit(fails ? 1 : 0);
 })();

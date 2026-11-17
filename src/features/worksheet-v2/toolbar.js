@@ -157,8 +157,18 @@
    *  the view names an add-menu explicitly, or when it runs the mdfManage
    *  integration AND the scene carries an Add MDF/IDF menu link (auto-hide
    *  the single-link source menu — the toolbar button replaces it). */
-  function addMdfAvailable(_vc) {
+  function addMdfAvailable(_vc, viewKey) {
     if (!_vc) return false;
+    // The survey page's custom closet modal (mdf-site-tools.js survey mode) needs no
+    // Knack menu: the old native page (#new-add-mdfidf, view_3773) and its menu view
+    // (view_3509) can be deleted in Builder without hiding the button. The menu is
+    // still hidden when it is there, as before.
+    if (_vc.mdfAddModal === 'survey' && viewKey && window.SCW && SCW.mdfSiteTools &&
+        typeof SCW.mdfSiteTools.canAddSurvey === 'function' && SCW.mdfSiteTools.canAddSurvey(viewKey)) {
+      var _menuEl = _vc.addMdfMenuView && document.getElementById(_vc.addMdfMenuView);
+      if (_menuEl) _menuEl.style.setProperty('display', 'none', 'important');
+      return true;
+    }
     // Explicit config wins — but only when the named menu view is actually
     // on the current scene (the view_4056 clone inherits view_4093's config
     // while its scene carries neither view_4136 nor any add-MDF menu link).
@@ -240,7 +250,7 @@
         // mdfManage worksheets (deploy) the button auto-appears the moment
         // the scene carries ANY "Add MDF/IDF" menu link — so adding the
         // Builder menu view lights it up with no code change.
-        (addMdfAvailable(_vc) ?
+        (addMdfAvailable(_vc, viewKey) ?
           actionBtn('add-mdf',    '+ Add MDF/IDF',        'Add a new MDF/IDF location') : '') +
         actionBtn('add-photos',   '+ Add Photos',         'Bulk upload photos') +
         // "+ Add Accessories" lives in the floating bulk panel (bulk.js)
@@ -1364,7 +1374,9 @@
     _accRetry:   ACC_RETRY,
     _accRefresh: ACC_REFRESH,
     // Test seam: run a toolbar action as its button would.
-    _handleAction: handleAction
+    _handleAction: handleAction,
+    // Test seam: the toolbar markup for a view (which buttons render).
+    _build: build
   };
 })();
 /*** END WORKSHEET V2 — TOOLBAR ***********************************************/
