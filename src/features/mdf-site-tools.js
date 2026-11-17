@@ -1,9 +1,10 @@
 /*** MDF/IDF SITE TOOLS — "+ Add MDF/IDF" modal (Make 22.02) + "Merge…" (Make 22.03) ***/
 /**
- * Rides the site route (mdf-site-route.js): only a login the route is ON for gets these, on the
- * three pages that carry a site closet grid — Build SOW (worksheet view_3962, grid view_4166),
+ * On the three pages that carry a site closet grid — Build SOW (worksheet view_3962, grid view_4166),
  * Reconcile Bids (bid-review-v2, grid view_4167), Manage Deployment (worksheet view_4093, grid
- * view_4168). Everyone else keeps the native Knack add forms and has no Merge.
+ * view_4168). "+ Add MDF/IDF" runs for EVERY login there (2026-11-17, addGridFor: the site grids are
+ * on the page for everyone); "Merge…" rides the site route (mdf-site-route.js) — only a login the
+ * route is ON for gets it. Other pages keep their native Knack add forms.
  *
  * "+ Add MDF/IDF" (worksheet toolbar, reconcile toolbar) opens a modal that lists the closets
  * ALREADY at the project's site first ("is it one of these?"), then type / ## / name / notes.
@@ -68,7 +69,21 @@
   function routeOn() { return !!(SCW.mdfSiteRoute && SCW.mdfSiteRoute.active()); }
   function siteGrid(key) { return !!(key && SCW.mdfSiteRoute && SCW.mdfSiteRoute.isSiteGrid(key)); }
   /** gridKey = the closet grid the page reads; the tools run only when it is a site grid. */
-  function canAdd(gridKey) { return routeOn() && siteGrid(gridKey) && !!hook('MAKE_MDF_IDF_WEBHOOK'); }
+  /** The site grid "+ Add MDF/IDF" reads for a page whose closet grid is `key` (the project grid,
+   *  or already its site twin on the route) — '' when the window cannot run (no hook, no site
+   *  twin, or the twin is not on the page). NOT gated to the site route's preview logins
+   *  (2026-11-17, Micah: "the add mdf/idf custom modal should no longer be gated to my login"):
+   *  the site grids are on the page for everyone, and Make 22.02 puts the new closet on the
+   *  project and its site whoever adds it. Merge stays on the route. */
+  function addGridFor(key) {
+    if (!key || !hook('MAKE_MDF_IDF_WEBHOOK')) return '';
+    var site = siteGrid(key) ? key
+      : (SCW.mdfSiteRoute && typeof SCW.mdfSiteRoute.twin === 'function' ? SCW.mdfSiteRoute.twin(key) : '');
+    if (!site) return '';
+    if (!(window.Knack && Knack.views && Knack.views[site])) return '';
+    return site;
+  }
+  function canAdd(gridKey) { return !!addGridFor(gridKey); }
   function canMerge(gridKey) { return routeOn() && siteGrid(gridKey) && !!hook('MAKE_MDF_MERGE_WEBHOOK'); }
 
   // ── the sub's survey page (2026-11-12) ───────────────────────────────
@@ -375,6 +390,14 @@
     opts = opts || {};
     var survey = opts.mode === 'survey';
     var gridKey = opts.gridKey;
+    /** The site grid the window reads, plus — for a login off the site route, whose worksheet
+     *  groups and pickers still read the PROJECT grid — that grid too (opts.pageGridKey), so the
+     *  new closet shows without a reload. Resolves when both are back. */
+    function refetchGrids() {
+      var ps = [refetchGrid(gridKey)];
+      if (opts.pageGridKey && opts.pageGridKey !== gridKey) ps.push(refetchGrid(opts.pageGridKey));
+      return Promise.all(ps.map(function (q) { return Promise.resolve(q).catch(function () { return null; }); }));
+    }
     var site = live(closets(gridKey));
     var ctx = survey ? surveyCtx() : null;
     var pid = survey ? (ctx ? surveyProjectId(ctx.id, gridKey) : '') : projectId();
@@ -488,7 +511,7 @@
           var appendNote = survey && surveyEntry && j.id && j.surveyNotesSaved !== true;
           CONFIG.createRefreshMs.forEach(function (ms, i) {
             setTimeout(function () {
-              var p = refetchGrid(gridKey);
+              var p = refetchGrids();
               if (i === 0) {
                 var after = function () {
                   refreshHost(opts.viewKey);
@@ -522,7 +545,7 @@
           closeModal();
           toast('Sent. The list refreshes when Make has created it.');
           CONFIG.mergePollMs.slice(0, 3).forEach(function (ms) {
-            setTimeout(function () { refetchGrid(gridKey); refreshHost(opts.viewKey); }, ms);
+            setTimeout(function () { refetchGrids(); refreshHost(opts.viewKey); }, ms);
           });
           return;
         }
@@ -1009,6 +1032,7 @@
     surveyGridOf: surveyGridOf,
     surveyProjectId: surveyProjectId,
     canMerge: canMerge,
+    addGridFor: addGridFor,
     openAdd: openAdd,
     openMerge: openMerge,
     closets: closets,

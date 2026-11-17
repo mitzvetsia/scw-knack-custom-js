@@ -103,15 +103,23 @@ const $$ = (s) => Array.from(document.querySelectorAll(s));
 (async () => {
   // ── gates ──
   ok(T.canAdd('view_4166') && T.canMerge('view_4166'), 'on the route + a site grid: add and merge are on');
-  ok(!T.canAdd('view_3577') && !T.canMerge('view_3822'), 'a project grid never gets them');
+  ok(T.addGridFor('view_3577') === 'view_4166' && !T.canMerge('view_3577'),
+    'a project grid: add reads its site twin, merge never runs on it');
+  ok(T.addGridFor('view_3822') === '', 'no add when the site twin is not on the page');
   userEmail = 'someone@getscw.com';
-  ok(!T.canAdd('view_4166') && !T.canMerge('view_4166'), 'a login off the preview list never gets them');
+  ok(T.canAdd('view_4166') && T.addGridFor('view_3577') === 'view_4166' && !T.canMerge('view_4166'),
+    'a login off the preview list: add is on (not gated since 2026-11-17), merge stays off');
+  window.SCW.CONFIG.MAKE_MDF_IDF_WEBHOOK = 'PLACEHOLDER';
+  ok(!T.canAdd('view_4166') && T.addGridFor('view_3577') === '', 'no hook: no add for anyone');
+  window.SCW.CONFIG.MAKE_MDF_IDF_WEBHOOK = 'https://hook.us1.make.com/create';
   userEmail = 'micah.shearer@getscw.com';
   ok(T.projectId() === PID, 'the project comes from the record after the page slug');
   ok(T.nextFree(T.closets('view_4166')) === '4', 'next free IDF ## at the site skips the merged IDF 07 (max live = 03)');
 
-  // ── + Add MDF/IDF ──
-  T.openAdd({ viewKey: 'view_3962', gridKey: 'view_4166' });
+  // ── + Add MDF/IDF ── (a login off the route: its worksheet reads the project grid view_3577)
+  let pageFetches = 0;
+  window.Knack.views.view_3577 = { model: { data: { models: [] }, fetch() { pageFetches++; return Promise.resolve(); } } };
+  T.openAdd({ viewKey: 'view_3962', gridKey: 'view_4166', pageGridKey: 'view_3577' });
   const listRows = $$('.scw-mst-list .scw-mst-row');
   ok(listRows.length === 4, 'the modal lists the 4 live closets at the site first (the merged one is left out)');
   ok(/HEADEND/.test(listRows[0].textContent) && /HEADEND/.test(listRows[1].textContent), 'HEADENDs lead the list');
@@ -136,6 +144,8 @@ const $$ = (s) => Array.from(document.querySelectorAll(s));
   ok(/Added IDF 04: Shop/.test(($('.scw-mst-toast') || {}).textContent || ''), 'the toast names what was added');
   runTimers(); await flush();
   ok(fetches >= 1 && refreshed.indexOf('view_3962') >= 0, 'the site grid and the worksheet are re-read');
+  ok(pageFetches >= 1, "the page's own closet grid is re-read too (the new closet shows without a reload)");
+  delete window.Knack.views.view_3577;
 
   // HEADEND: no ##
   posts = []; fetches = 0;

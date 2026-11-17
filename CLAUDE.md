@@ -916,12 +916,27 @@ On the route, "+ Add MDF/IDF" (worksheet + reconcile toolbars) opens a modal tha
 `MAKE_MDF_IDF_WEBHOOK` (22.02 `create`: next free ## prefilled, a taken ## refused, Make re-checks and answers JSON), and
 the closet panels (worksheet pencil, reconcile gear) carry **Merge…**: the open closet is the keeper, tick duplicates
 (amber note on a type / ## mismatch), two-step confirm, one POST to `MAKE_MDF_MERGE_WEBHOOK` (22.03, sequential, no reply).
-**The route's "+ Add MDF/IDF" needs no native menu (2026-11-17)**: both toolbars (`worksheet-v2/toolbar.js
-addMdfAvailable`, `bid-review-v2/toolbar.js addMdfAvailable`) render the button whenever `mdfSiteTools.canAdd(<the
-page's closet grid>)` says the window can run, so the deploy page (scene_1311 — it has NO native add menu; the
-`addMdfMenuView: 'view_4136'` it inherits is on the sub's dashboard) finally shows it on the route, and a page's native
-"Add MDF/IDF" page + menu can be deleted once the route is on for everyone. Off the route the button still follows the
-native link. On the deploy page Merge lists the site grid view_4168, which filters out `proposed` closets — merge a sub's
+**The merge bar reads progress off the grid LIST, with the page crumb (2026-11-17 — "just sits at 0% right up until
+the end")**: the window's one-record read of the keeper through the site grid (`knackRecordUrl`) carried no
+parent-record crumb, and the site grids are filtered through the page's record (project → site), so every read found
+nothing and the bar only finished off the grid fallback. `readKeeper` now GETs the grid's own records address plus the
+page's crumbs (`util.js` `SCW.viewRecordsUrl` / `SCW.sceneCrumbs` — the rule change-record-limit.js proved live; it
+keeps its own copy), `cache: false`, finds the keeper in the list and counts merged losers from the same reply
+(`lostIn` — no grid re-render while it works); the one-record read is the fallback; one console line per change says
+which read worked and what it found (`[scw-mdf-merge] run … read 12 MDF/IDFs off view_4166, keeper found, progress
+step 2 …`). NOT verified live yet: if the bar still sits, that line names the failing read. Tests:
+`tests/misc/test-view-records-url.js`, the list / fallback blocks in `tests/misc/test-mdf-site-tools.js`.
+**"+ Add MDF/IDF" is the custom window for EVERY login and needs no native menu (2026-11-17 — "the add mdf/idf custom
+modal should no longer be gated to my login")**: `mdf-site-tools.js addGridFor(<the page's closet grid>)` answers the
+site twin (`mdf-site-route.js twin`: view_3577 → view_4166, view_3822 → view_4167, view_3932 → view_4168) whenever the
+22.02 hook is set and the twin is on the page — whatever the login (the site grids render for everyone, hidden); `canAdd`
+= `!!addGridFor`. Merge stays on the route (`canMerge`). Both toolbars (`worksheet-v2/toolbar.js addMdfAvailable`,
+`bid-review-v2/toolbar.js addMdfAvailable`) render the button whenever the window can run and open it with `gridKey` =
+the twin and `pageGridKey` = the page's own grid, which `openAdd` re-reads after a create too (off the route the
+worksheet's groups and pickers still read the project grid). So the deploy page (scene_1311 — it has NO native add menu;
+the `addMdfMenuView: 'view_4136'` it inherits is on the sub's dashboard) shows it, and the native "Add MDF/IDF" page +
+menu on Build SOW (view_3441 / view_3436) can be deleted. The sales SOW page (view_3602) and the sub's deployment
+dashboard (view_4060) have no site twin and keep their native forms. On the deploy page Merge lists the site grid view_4168, which filters out `proposed` closets — merge a sub's
 not-yet-reviewed duplicate from Build SOW. Tests: the deploy block in `tests/misc/test-mdf-survey-add.js`,
 `tests/bid-review-v2/test-add-mdf-button.js`.
 **The merge waits with a real progress bar** ("we'll get too much 'is it working?'"): the window stays open, no close /

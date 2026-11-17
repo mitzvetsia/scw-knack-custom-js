@@ -169,8 +169,8 @@
       if (_menuEl) _menuEl.style.setProperty('display', 'none', 'important');
       return true;
     }
-    // The site route's add window (mdf-site-tools.js openAdd, Make 22.02) needs no Knack menu
-    // either (2026-11-17). The deploy page (scene_1311) has no native add menu at all — the
+    // The add window (mdf-site-tools.js openAdd, Make 22.02 — every login on a page with a site
+    // closet grid) needs no Knack menu either (2026-11-17). The deploy page (scene_1311) has no native add menu at all — the
     // view_4136 it names sits on the sub's dashboard — so without this the button never showed
     // there, and deleting a page's native "Add MDF/IDF" page + menu would hide the window too.
     if (_vc.mdfSourceViewKey && window.SCW && SCW.mdfSiteTools &&
@@ -473,8 +473,12 @@
         SCW.mdfSiteTools.openAdd({ viewKey: viewKey, gridKey: SCW.mdfSiteTools.surveyGridOf(viewKey), mode: 'survey' });
         return;
       }
-      if (window.SCW.mdfSiteTools && SCW.mdfSiteTools.canAdd(_siteGrid)) {
-        SCW.mdfSiteTools.openAdd({ viewKey: viewKey, gridKey: _siteGrid });
+      // Every login since 2026-11-17: the window reads the site twin of the page's closet grid;
+      // the page grid (still the project grid off the route) is re-read after an add as well.
+      var _addGrid = window.SCW.mdfSiteTools && typeof SCW.mdfSiteTools.addGridFor === 'function'
+        ? SCW.mdfSiteTools.addGridFor(_siteGrid) : '';
+      if (_addGrid) {
+        SCW.mdfSiteTools.openAdd({ viewKey: viewKey, gridKey: _addGrid, pageGridKey: _siteGrid });
         return;
       }
       // Same pattern as addSowMenuView: the configured Knack menu view's

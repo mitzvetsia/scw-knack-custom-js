@@ -1,8 +1,8 @@
-// jsdom test: the Reconcile Bids toolbar's "+ Add MDF/IDF" (2026-11-17). On the site route
-// (mdf-site-route.js preview) the button opens the custom add window (mdf-site-tools openAdd,
-// Make 22.02), so it no longer needs a native Knack "Add MDF/IDF" menu on the page — the native
-// page + menu can be deleted in Builder without the window losing its button. Off the route the
-// button still follows a native menu link, as before. Drives the real bid-review-v2/toolbar.js;
+// jsdom test: the Reconcile Bids toolbar's "+ Add MDF/IDF" (2026-11-17). The button opens the
+// custom add window (mdf-site-tools openAdd, Make 22.02) for every login whenever it can run, so it
+// no longer needs a native Knack "Add MDF/IDF" menu on the page — the native page + menu can be
+// deleted in Builder without the window losing its button. When the window cannot run the button
+// still follows a native menu link, as before. Drives the real bid-review-v2/toolbar.js;
 // mdf-site-tools is stubbed to its canAdd / openAdd switch.
 const fs = require('fs');
 const path = require('path');
@@ -21,13 +21,16 @@ global.Knack = window.Knack;
 window.SCW = { CONFIG: {}, worksheetV2: {}, debug() {}, onViewRender() {}, onSceneRender() {} };
 global.SCW = window.SCW;
 
-let routeOn = false;
+// canRun = the add window can run (the hook is set and the site twin view_4167 is on the page) — for
+// every login since 2026-11-17; a login off the route still reads the project grid view_3822.
+let canRun = false;
 const opens = [];
 window.SCW.mdfSiteTools = {
-  canAdd: (grid) => routeOn && grid === 'view_4167',
+  addGridFor: (grid) => (canRun && (grid === 'view_3822' || grid === 'view_4167') ? 'view_4167' : ''),
+  canAdd: (grid) => canRun && (grid === 'view_3822' || grid === 'view_4167'),
   openAdd: (o) => opens.push(o)
 };
-window.SCW.bidReview = { CONFIG: { mdfIdfViewKey: 'view_4167' } };
+window.SCW.bidReview = { CONFIG: { mdfIdfViewKey: 'view_3822' } };
 window.SCW.bidReviewV2 = { CONFIG: { mountId: 'scw-bid-review-v2' } };
 new Function('window', 'document', '$', 'Knack', 'SCW', fs.readFileSync(path.join(__dirname, '../../src/features/bid-review-v2/toolbar.js'), 'utf8'))(window, document, jq, window.Knack, window.SCW);
 
@@ -44,7 +47,7 @@ function remount() {
 }
 const click = (el) => el.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
 
-ok(!remount(), 'route off, no native menu: no button (nothing to open)');
+ok(!remount(), 'window cannot run, no native menu: no button (nothing to open)');
 
 const menu = document.createElement('div');
 menu.className = 'kn-menu kn-view'; menu.id = 'view_9001';
@@ -53,18 +56,18 @@ document.body.appendChild(menu);
 let nativeClicks = 0;
 menu.querySelector('a').addEventListener('click', (e) => { e.preventDefault(); nativeClicks++; });
 const b1 = remount();
-ok(!!b1, 'route off, native menu on the page: the button renders');
+ok(!!b1, 'window cannot run, native menu on the page: the button renders');
 ok(menu.style.display === 'none', '… and the lone menu is hidden');
 click(b1);
 ok(nativeClicks === 1 && opens.length === 0, '… and its click follows the native link');
 
-routeOn = true;
+canRun = true;
 menu.remove();
 const b2 = remount();
-ok(!!b2, 'route on, native menu deleted in Builder: the button still renders');
+ok(!!b2, 'window can run (any login), native menu deleted in Builder: the button still renders');
 click(b2);
-ok(opens.length === 1 && opens[0].gridKey === 'view_4167' && opens[0].viewKey === 'view_3921',
-  '… and opens the add window over the site grid');
+ok(opens.length === 1 && opens[0].gridKey === 'view_4167' && opens[0].viewKey === 'view_3921' && opens[0].pageGridKey === 'view_3822',
+  '… and opens the add window over the site grid, re-reading the page grid after');
 
 console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
 process.exit(fails ? 1 : 0);

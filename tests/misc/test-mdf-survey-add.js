@@ -204,10 +204,21 @@ const clickAdd = () => $m('[data-act="add"]').click();
   load('../../src/features/mdf-site-route.js');
   window.SCW.mdfSiteRoute.install();
   window.Knack.views.view_4168 = { model: { data: { get models() { return grid; } }, fetch() { return Promise.resolve(); } } };
-  check('deploy worksheet, route off, no native menu: no button', hasAddMdf('view_4093'), false);
+  // Not gated to the route's preview logins (2026-11-17): a login off the route gets the window too,
+  // reading the site twin (view_4168) of the page's project grid (view_3932).
+  check('deploy worksheet, a login off the route: the page still reads the project grid',
+    ns.cfg.viewCfg('view_4093').mdfSourceViewKey, 'view_3932');
+  check('… and shows "+ Add MDF/IDF" with no native menu on the page', hasAddMdf('view_4093'), true);
+  const realOpen = window.SCW.mdfSiteTools.openAdd;
+  const opened = [];
+  window.SCW.mdfSiteTools.openAdd = (o) => opened.push(o);
+  ns.toolbar._handleAction('add-mdf', 'view_4093');
+  check('… whose click opens the window over the site grid, re-reading the project grid after',
+    opened.map((o) => [o.gridKey, o.pageGridKey]), [['view_4168', 'view_3932']]);
+  window.SCW.mdfSiteTools.openAdd = realOpen;
   localStorage.setItem('scwMdfSiteRoute', '1');
   check('route on: the deploy worksheet reads the site grid', ns.cfg.viewCfg('view_4093').mdfSourceViewKey, 'view_4168');
-  check('… and shows "+ Add MDF/IDF" with no native menu on the page', hasAddMdf('view_4093'), true);
+  check('… and still shows the button', hasAddMdf('view_4093'), true);
   ns.toolbar._handleAction('add-mdf', 'view_4093');
   check('… whose click opens the add window', !!document.querySelector('.scw-mst-overlay'), true);
   const cancelBtn = document.querySelector('.scw-mst-overlay [data-act="cancel"]');

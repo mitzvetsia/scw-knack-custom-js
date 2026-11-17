@@ -86,6 +86,15 @@
     return pair;
   }
 
+  /** The site twin of a project closet grid whatever the login ('' when there is none, or the
+   *  schema does not list it) — "+ Add MDF/IDF" reads it for everyone (mdf-site-tools addGridFor). */
+  function twin(baseKey) {
+    var pair = CONFIG.pairs[baseKey];
+    if (!pair) return '';
+    if (typeof SCW.sceneOfView === 'function' && window.Knack && Knack.scenes && !SCW.sceneOfView(pair)) return '';
+    return pair;
+  }
+
   /** Is this one of the site-sourced grids (view_4166 / view_4167 / view_4168)? */
   function isSiteGrid(key) {
     for (var k in CONFIG.pairs) if (CONFIG.pairs[k] === key) return true;
@@ -241,6 +250,7 @@
     view: view,
     views: views,
     isSiteGrid: isSiteGrid,
+    twin: twin,
     pruneMerged: pruneMerged,
     install: install
   };

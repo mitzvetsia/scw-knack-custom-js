@@ -66,7 +66,7 @@
     return null;
   }
   function addMdfAvailable() {
-    // The site route's add window (handleAddMdf → mdf-site-tools openAdd) needs no Knack menu
+    // The add window (handleAddMdf → mdf-site-tools openAdd, every login) needs no Knack menu
     // (2026-11-17): the button stays when the native "Add MDF/IDF" page + menu are deleted.
     var siteGrid = window.SCW.bidReview && SCW.bidReview.CONFIG && SCW.bidReview.CONFIG.mdfIdfViewKey;
     if (window.SCW.mdfSiteTools && typeof SCW.mdfSiteTools.canAdd === 'function' &&
@@ -181,8 +181,11 @@
   function handleAddMdf() {
     // Site route (mdf-site-route.js preview): Make 22.02 creates it on the project + its site.
     var siteGrid = window.SCW.bidReview && SCW.bidReview.CONFIG && SCW.bidReview.CONFIG.mdfIdfViewKey;
-    if (window.SCW.mdfSiteTools && SCW.mdfSiteTools.canAdd(siteGrid)) {
-      SCW.mdfSiteTools.openAdd({ viewKey: 'view_3921', gridKey: siteGrid });
+    // Every login since 2026-11-17: the window reads the site twin of the page's closet grid.
+    var addGrid = window.SCW.mdfSiteTools && typeof SCW.mdfSiteTools.addGridFor === 'function'
+      ? SCW.mdfSiteTools.addGridFor(siteGrid) : '';
+    if (addGrid) {
+      SCW.mdfSiteTools.openAdd({ viewKey: 'view_3921', gridKey: addGrid, pageGridKey: siteGrid });
       return;
     }
     var found = findAddMdfMenuLink();
