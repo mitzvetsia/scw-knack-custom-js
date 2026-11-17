@@ -1053,7 +1053,17 @@ project → site is two hops) without a site connection on the SOW itself; INSTA
 closet object_75, never at OPS_MDF-IDF; Sales Portal → Company Details (scene_1115) already lists the company's
 sites (view_3416). 85 of the 287 sited projects created since 2026-07-20 (30%) landed at a site that already had a
 project, and in 84 of those 85 the earlier project there was for the SAME company; 2,382 of 2,816 companies have one
-site, 374 have 2–5, 60 have more (max 96). Tests: the no-site blocks in
+site, 374 have 2–5, 60 have more (max 96). **Answered the same day**: pick-or-new is APPROVED ("does work —
+particularly when paired with the address check"); legacy as-built is LATER; a site link on the SOW is NOT approved
+("I'm unsure about attaching SOWs to sites… they do need to be more fluid between projects… all line items should
+connect to a site… if one item on the sow is on the project then they all need to be"). Proposed instead, not yet
+confirmed: the site is stored on the PROJECT only; a SOW and its lines reach it through the project, so nothing is
+re-synced when a SOW moves. Schema behind it: a SOW line (`object_105`) stores its OWN project `field_1948` beside
+the SOW's `field_2119` (where a half-moved SOW comes from), its closet `field_1946` and its SOWs `field_2154`, and no
+site; the Sales Portal has a project-record page, scene_1127 "View CORE_project Details" (Sales Portal → Company
+Details → View CORE_project Details), which can host "connected to the Site connected to this project" grids the SOW
+page would read through its project (a cross-page view read, NOT proven live; 22.02 `list` is the proven fallback).
+Tests: the no-site blocks in
 `tests/misc/test-mdf-project-add.js` and `tests/bid-review-v2/test-add-mdf-button.js`.
 
 **Closet survey notes are a stamped, append-only log (built 2026-11-02)** — `mdf-edit-core.js`
