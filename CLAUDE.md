@@ -1063,6 +1063,12 @@ the SOW's `field_2119` (where a half-moved SOW comes from), its closet `field_19
 site; the Sales Portal has a project-record page, scene_1127 "View CORE_project Details" (Sales Portal → Company
 Details → View CORE_project Details), which can host "connected to the Site connected to this project" grids the SOW
 page would read through its project (a cross-page view read, NOT proven live; 22.02 `list` is the proven fallback).
+**Requirement added the same day**: "I want to see proposed services sometimes when looking at a site" — a site view
+must list PROPOSED lines too, services included (lines with no MDF/IDF reach the site through their project
+`field_1948` → `field_1259`; never tell Micah a location-less line is not visible at a site). Site-record pages today:
+Site Dashboard (Clients Backend → Clients → Client Dashboard → Site Dashboard) with its As Builts (scene_776), Service
+Calls (scene_777) and Projects (scene_778, HISTORICAL quotes only) tabs; a grid there of "SOW line items connected to
+projects connected to this site" needs no site field on the line.
 Tests: the no-site blocks in
 `tests/misc/test-mdf-project-add.js` and `tests/bid-review-v2/test-add-mdf-button.js`.
 
