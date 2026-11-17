@@ -135,6 +135,12 @@ document.head.appendChild(style);
 
 ### Knack Field/View References
 
+**When telling Micah about a view, always say where it is** (2026-11-17: "whenever you tell me about specific grids or
+views, I need some more information to find them like what page they're on"): the page name, its menu path and the view's
+title — e.g. "view_4166, the 'Edit / Rename MDFs & IDFs' grid on BUILD SOW (Projects → Project Dashboard → BUILD SOW)".
+Look it up in the public schema (`https://us-api.knack.com/v1/applications/594319f83817c2580c853138`, no key needed):
+`scenes[].views[]` for the view, `scene.parent` (a slug) for the page chain.
+
 - Views: `view_XXXX` (e.g., `view_3512`, `view_3505`)
 - Fields: `field_XXXX` (e.g., `field_2400`, `field_2415`)
 - Scenes: `scene_XXXX` (e.g., `scene_1085`)
