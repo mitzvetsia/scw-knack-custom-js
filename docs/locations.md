@@ -383,8 +383,9 @@ Build SOW, CO, deploy) and by the SOW-create scenarios. Two actions:
 - **Duplicates at a site (11-10)**: 318 sites carry 2+ HEADEND/MDF, 48 sites repeat an IDF ##; 1,340 HEADENDs are
   unnamed. Merging is done in the app (preview, micah.shearer only).
 - **Builder**: `field_1648`'s object default is now none, but the five forms still set the project input to "first"
-  (view_2678, view_3628, view_3630, view_3781, view_3773 — radio, `conn_default: first`), so a create through them
-  still lands on Pour Taproom. `SYS_merge progress` (object_96) and `SYS_merge lock` (object_74) do not exist yet, so
+  (view_3628 / view_3630 / view_3781 on the sub portal's Add Survey/Bid Item page, view_3773 on New Add MDF/IDF — radio,
+  `conn_default: first`), so a create through them still lands on Pour Taproom. view_2678 (old quote flow's Survey Form →
+  Add MDF/IDF) has the same default but that page is deprecated, kept only to review historical projects — no fix needed. `SYS_merge progress` (object_96) and `SYS_merge lock` (object_74) do not exist yet, so
   22.03 v2 cannot be built for import; view_4167 / view_4168 still serve no `field_2845`.
 
 ### Next steps (as of 2026-11-02, partly superseded by the status above)
