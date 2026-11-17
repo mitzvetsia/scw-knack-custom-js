@@ -393,6 +393,33 @@ Build SOW, CO, deploy) and by the SOW-create scenarios. Two actions:
   pages and their menus are deleted (so no live form defaults the project to the first record; view_2678 on the
   deprecated old survey flow still does). 22.03 v2 delivered for import the same day.
 
+### Status from the 2026-11-17 exports (projects, sites, MDF/IDFs — after the first in-app merges)
+- **3,326 closets**: 9 `merged` (all 9 carry REL_merged into; the six FMM 505 keepers read `…|8|1|1|Done` in
+  `SYS_merge progress`, the site's lock reads `done`), 3,130 with a site, **187 without** (was 97 on 11-10).
+- **The no-site list is growing**: 90 of the 96 closets created since 11-10 have no site, 87 of them on a project
+  that HAS one. Creators: "Account Owner" 46 (Make — default MDFs from 01.01 / 01.02 / 01.03 and the 01.04 clone's
+  copies, e.g. 26 on one Toyota project) and people through the native add forms 44 (Stu Moore 21, Steffon
+  Rhamanohar 12, Brian Burke 5, Zachary Chambliss 4, Preston Bauer 1, Coalter Wilson 1). The 6 that DO have a site are
+  22.02's (the survey modal, `proposed`). No closet was created on no project / on Pour Taproom since 11-10 (the
+  Builder default fix held).
+- **Fixes**: (a) the bundle of 2026-11-17 puts the 22.02 window on every page that adds closets (Build SOW,
+  Reconcile, Deploy, sales SOW, sub deployment dashboard), so the native forms stop being the way in; (b) **22.01
+  "(sets the Site)" blueprint** (`scratchpad/bp2201/patch.py` over the user's export; import INTO the scenario): a new
+  first route — the closet has a project and no site → [21] get the project → [22] closet `field_2848` = the project's
+  `field_1259` — and the SOW route's search [4] now runs only when the closet has a project. It catches every creator
+  IF Knack's New Event trigger fires for records Make creates (verify: a default MDF from a new SOW must get its
+  site; if not, the site step has to go into 01.01 / 01.02 / 01.03 / 01.04).
+- **Worklists** — `tools/mdf_site_worklist.py <projects> <sites> <mdfidf> <outdir> [<older mdfidf>]` (merged closets
+  left out): `1_site_backfill.csv` 89 closets whose project has a site (import, match on Record ID, map CORE_site
+  only); `2_projects_without_site.csv` 25 projects / 33 closets (21 projects with no site, 4 whose site nickname is
+  shared by two site records: "Agramont Worldwide - San Diego, CA", "Three Bears General Store - Ruby Apartments");
+  `3_closets_no_project.csv` 65 (30 no project, 35 Pour Taproom; 2 with an old quote, 3 with photos, none with a
+  survey request); `4_merge_worklist.csv` 366 likely groups on 294 sites (534 closets would merge away: 283 groups of
+  unnamed HEADENDs, 64 of a repeated unnamed IDF ##, 19 same-name) + 123 possible groups on 80 sites, suggested
+  keeper first (installed → survey requests → named → most photos → oldest; "Main MDF" now counts as unnamed);
+  `5_sites_to_merge.csv` the 349 sites ranked by closets a merge takes away (Ole Mexican Foods- Norcross 13, Tata
+  Consumer Products 12, Centennial Holding - Century University City 11, 1345 Hendersonville Road 10, …).
+
 ### Next steps (as of 2026-11-02, partly superseded by the status above)
 Done 2026-11-02 / 11-03: the exports came in, the cleanup kit and the duplicate review list are built
 (see "Cleanup kit" above), and survey notes are a stamped log in the bundle. Nothing has been written

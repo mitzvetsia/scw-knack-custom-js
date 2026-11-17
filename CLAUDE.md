@@ -1024,6 +1024,15 @@ DASHBOARD, the pages "Add Survey/Bid Item" (`/add-surveybid-item`: view_3627 + t
 view_3630 / view_3781) and "New Add MDF/IDF" (`/new-add-mdfidf`: view_3773) and their one-link menus view_3543 /
 view_3509 can be deleted. Cost: the native fallbacks (a blank webhook, a preview list) then have nothing to open.
 
+**State of the data (2026-11-17 exports) + the leak**: 3,326 closets, 9 merged, 187 with no site — and 90 of the 96
+created since 11-10 have none (Make's default / cloned closets 46, the native add forms 44). The page-side fix is the
+22.02 window on every adding page (above); the Make-side catch-all is **22.01 "(sets the Site)"** (`scratchpad/bp2201/
+patch.py`: closet has a project and no site → the project's `field_1259` → closet `field_2848`; the SOW search guarded
+by "has a project") — delivered 2026-11-17, unverified live (does Knack's New Event fire for records Make creates?).
+`tools/mdf_site_worklist.py` rebuilds the worklists from fresh exports (site backfill import, projects needing a site,
+closets on no project, the per-site merge worklist with a suggested keeper, sites ranked). Numbers and the run:
+docs/locations.md "Status from the 2026-11-17 exports".
+
 **Closet survey notes are a stamped, append-only log (built 2026-11-02)** — `mdf-edit-core.js`
 `appendSurveyNote` / `renderSurveyLog`: a survey ADDS `[11/02/2026 · SR1145] text` on top of `field_2457` (GET
 first, then the shared PUT; the stamp names the survey record, NEVER the person or company; refuses to write
