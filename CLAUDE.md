@@ -916,6 +916,14 @@ On the route, "+ Add MDF/IDF" (worksheet + reconcile toolbars) opens a modal tha
 `MAKE_MDF_IDF_WEBHOOK` (22.02 `create`: next free ## prefilled, a taken ## refused, Make re-checks and answers JSON), and
 the closet panels (worksheet pencil, reconcile gear) carry **Merge…**: the open closet is the keeper, tick duplicates
 (amber note on a type / ## mismatch), two-step confirm, one POST to `MAKE_MDF_MERGE_WEBHOOK` (22.03, sequential, no reply).
+**The route's "+ Add MDF/IDF" needs no native menu (2026-11-17)**: both toolbars (`worksheet-v2/toolbar.js
+addMdfAvailable`, `bid-review-v2/toolbar.js addMdfAvailable`) render the button whenever `mdfSiteTools.canAdd(<the
+page's closet grid>)` says the window can run, so the deploy page (scene_1311 — it has NO native add menu; the
+`addMdfMenuView: 'view_4136'` it inherits is on the sub's dashboard) finally shows it on the route, and a page's native
+"Add MDF/IDF" page + menu can be deleted once the route is on for everyone. Off the route the button still follows the
+native link. On the deploy page Merge lists the site grid view_4168, which filters out `proposed` closets — merge a sub's
+not-yet-reviewed duplicate from Build SOW. Tests: the deploy block in `tests/misc/test-mdf-survey-add.js`,
+`tests/bid-review-v2/test-add-mdf-button.js`.
 **The merge waits with a real progress bar** ("we'll get too much 'is it working?'"): the window stays open, no close /
 Esc, a leave-page warning, until it is done. 22.03 writes `<runId>|<loser>|<losers>|<step>|<i>|<of>|<text>` onto the
 KEEPER's `SYS_merge progress` field (steps 1–5 re-point SOW lines / survey items / install items / bid revision lines /

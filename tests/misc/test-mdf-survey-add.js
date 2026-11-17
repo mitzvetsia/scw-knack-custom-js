@@ -199,6 +199,22 @@ const clickAdd = () => $m('[data-act="add"]').click();
   check('… but with no hook and no menu there is nothing to open, so no button', hasAddMdf('view_3505'), false);
   window.SCW.CONFIG.MAKE_MDF_IDF_WEBHOOK = 'https://hook.us1.make.com/create';
 
+  // ── the site route's add window needs no native menu either (2026-11-17): the deploy page
+  // (scene_1311) has no "Add MDF/IDF" menu at all, so the button never showed there ──
+  load('../../src/features/mdf-site-route.js');
+  window.SCW.mdfSiteRoute.install();
+  window.Knack.views.view_4168 = { model: { data: { get models() { return grid; } }, fetch() { return Promise.resolve(); } } };
+  check('deploy worksheet, route off, no native menu: no button', hasAddMdf('view_4093'), false);
+  localStorage.setItem('scwMdfSiteRoute', '1');
+  check('route on: the deploy worksheet reads the site grid', ns.cfg.viewCfg('view_4093').mdfSourceViewKey, 'view_4168');
+  check('… and shows "+ Add MDF/IDF" with no native menu on the page', hasAddMdf('view_4093'), true);
+  ns.toolbar._handleAction('add-mdf', 'view_4093');
+  check('… whose click opens the add window', !!document.querySelector('.scw-mst-overlay'), true);
+  const cancelBtn = document.querySelector('.scw-mst-overlay [data-act="cancel"]');
+  if (cancelBtn) cancelBtn.click();
+  check('the sub deployment clone (project grid view_4060) never gets it', hasAddMdf('view_4056'), false);
+  localStorage.removeItem('scwMdfSiteRoute');
+
   console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
   process.exit(fails ? 1 : 0);
 })();

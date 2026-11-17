@@ -169,6 +169,16 @@
       if (_menuEl) _menuEl.style.setProperty('display', 'none', 'important');
       return true;
     }
+    // The site route's add window (mdf-site-tools.js openAdd, Make 22.02) needs no Knack menu
+    // either (2026-11-17). The deploy page (scene_1311) has no native add menu at all — the
+    // view_4136 it names sits on the sub's dashboard — so without this the button never showed
+    // there, and deleting a page's native "Add MDF/IDF" page + menu would hide the window too.
+    if (_vc.mdfSourceViewKey && window.SCW && SCW.mdfSiteTools &&
+        typeof SCW.mdfSiteTools.canAdd === 'function' && SCW.mdfSiteTools.canAdd(_vc.mdfSourceViewKey)) {
+      var _routeMenu = _vc.addMdfMenuView && document.getElementById(_vc.addMdfMenuView);
+      if (_routeMenu) _routeMenu.style.setProperty('display', 'none', 'important');
+      return true;
+    }
     // Explicit config wins — but only when the named menu view is actually
     // on the current scene (the view_4056 clone inherits view_4093's config
     // while its scene carries neither view_4136 nor any add-MDF menu link).
