@@ -85,8 +85,11 @@
   // bucket id worksheet-v2's bucketCategoryOf uses for 'assumptions'.
   var ASSUMPTIONS_BUCKET = '697b7a023a31502ec68b3303';
   // Same ids worksheet-v2 card.js uses. Services and licenses are filed the
-  // way the worksheet files them: every service under "Project Wide
-  // Services", every license under "Licenses", whatever MDF/IDF they carry.
+  // way the worksheet files them (groups.js): a service WITH an MDF/IDF sits
+  // in that MDF/IDF, one with none under "Project Wide Services"; every
+  // license under "Licenses" whatever MDF/IDF it carries. (2026-11-17 —
+  // "worksheets are supposed to show under their MDF/IDF if they have one";
+  // until then this window filed every service as project wide.)
   var SERVICES_BUCKET    = '6977caa7f246edf67b52cbcd';
   var LICENSE_BUCKET     = '645554dce6f3a60028362a6a';
   var GROUP_SERVICES     = { id: '__services', label: 'Project Wide Services' };
@@ -582,7 +585,10 @@
     function groupOf(rec) {
       var k = kindOf(rec);
       if (k === 'license') return GROUP_LICENSES;
-      if (k === 'service') return GROUP_SERVICES;
+      if (k === 'service') {
+        var sm = conn(rec, F.mdfIdf);
+        if (!(sm && sm.id)) return GROUP_SERVICES;      // no MDF/IDF = project wide
+      }
       return groupBy(rec) || { id: '__unknown', label: 'No MDF / IDF' };
     }
 

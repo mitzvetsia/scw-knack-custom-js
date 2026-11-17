@@ -100,9 +100,11 @@ const nameOf = id => [txt(row(id).querySelector('[data-alt-kind]')), txt(row(id)
   check('groups: the MDF/IDF, then No MDF / IDF, then Project Wide Services, then Licenses',
     $$('[data-alt-grp]').map(txt),
     ['HEADEND: 2nd Floor (Main) MDF', 'No MDF / IDF', 'Project Wide Services', 'Licenses']);
-  check('each group holds what it says: the services leave the MDF/IDF (sorted by name), the license too',
+  // 2026-11-17: a service WITH an MDF/IDF stays in it (the worksheet's own rule); only the two with none are
+  // project wide. The license leaves its MDF/IDF as before.
+  check('each group holds what it says: the located service stays in its MDF/IDF, the two with none are project wide, the license leaves',
     $$('.scw-alt-sow-rows').map(w => [...w.querySelectorAll('[data-alt-row]')].map(r => ids.indexOf(r.getAttribute('data-alt-row')))),
-    [[0], [5], [2, 1, 3], [4]]);
+    [[0, 1], [5], [2, 3], [4]]);
   check('rows are named: label, else product, else the service description (tags stripped, entities read), with a kind tag',
     [nameOf(ids[0]), nameOf(ids[1]), nameOf(ids[2]), nameOf(ids[4]), nameOf(ids[5])],
     [['', 'AC-001'],

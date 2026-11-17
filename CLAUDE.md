@@ -1069,6 +1069,15 @@ must list PROPOSED lines too, services included (lines with no MDF/IDF reach the
 Site Dashboard (Clients Backend → Clients → Client Dashboard → Site Dashboard) with its As Builts (scene_776), Service
 Calls (scene_777) and Projects (scene_778, HISTORICAL quotes only) tabs; a grid there of "SOW line items connected to
 projects connected to this site" needs no site field on the line.
+**The cross-page read is PROVEN (2026-11-17, Micah's login, build 22e1a68a)**: from the sales Scope of Work Details
+page, `GET …/v1/scenes/scene_1085/views/view_4166/records?format=both&rows_per_page=1000&build-sow_id=<projectId>`
+(the project from `SCW.mdfSiteTools.pageProject()`, `SCW.knackAjax`) returned the site's 36 MDF/IDFs. So a page
+whose record is a SOW can read any "connected to the Site connected to this project" grid that lives on a
+project-record page, by passing that page's crumb (`<slug>_id=<projectId>`). NOT yet tried under a SALES login —
+scene_1085 sits under the Projects login, so sales will likely need the same grids on a Sales Portal project page
+(scene_1127). Model settled in the same thread: MDF/IDF, Position (later) and installed item connect to the site; a
+SOW line reaches it through its project and, when it has one, its MDF/IDF (services may have one: "services also
+MIGHT connect to a specific location"); no site field on the SOW or on a line.
 Tests: the no-site blocks in
 `tests/misc/test-mdf-project-add.js` and `tests/bid-review-v2/test-add-mdf-button.js`.
 
@@ -1211,10 +1220,15 @@ Item" on view_3505) now lead with a **Service** picker over the catalog's Servic
 - **MDF/IDF on the Services form is OPTIONAL, and asked (same day, twice)**: "service add modal shouldn't
   require an MDF/IDF" first removed the `{ t: 'mdf', mode: 'opt' }` row from both suites; "it should
   ask" put it back the same afternoon (the user had the SOW picker's requirement in mind). The row was
-  never mandatory (`mode: 'opt'` renders "MDF / IDF (optional)"). The worksheets file every Services
-  line under the synthetic "Project Wide Services" group whatever `field_1946` says (`groups.js`;
-  bid-review-v2 `transform.js` the same), but the PROPOSAL (`proposal-grid-v2.js`) groups lines by
-  `field_1946`, so a located service lists under its location there. The payload carries the picks as
+  never mandatory (`mode: 'opt'` renders "MDF / IDF (optional)"). **A service WITH an MDF/IDF sits in
+  that MDF/IDF everywhere; only one with NONE is "Project Wide Services"** — `groups.js` and bid-review-v2
+  `transform.js` (`r.mdfIdf || syntheticL1ForBucket`) have always grouped that way, and the proposal
+  groups lines by `field_1946` too. (CORRECTED 2026-11-17: this note used to say the worksheets file every
+  service as project wide, which was never true; Micah: "worksheets are supposed to show under their
+  MDF/IDF if they have one". The Create Alternate SOW window HAD followed the wrong note and was fixed the
+  same day; the sub's bid document `sub-bid-document.js` still lists every Other Services line under
+  Project Wide Services — a rule of its 2026-10-28 mockup, not changed.) Test:
+  `tests/worksheet-v2/test-service-location-group.js`. The payload carries the picks as
   `field_2250_raw` (`DTO_MDF_FIELD.opt`; `[]` when none); Make 02.01 / 05.01's service routes fan out
   per MDF through `154.MDFs` exactly as the assumption route does (blank → one line, no MDF).
 - **A service WITH a product shows the product everywhere (same day — "onboarding fee")**: the
@@ -2415,9 +2429,10 @@ redesign". The window (button on view_3869's header, rows from view_3586's paren
   step. Nothing is sent before step 3's Create.
 - **Rows with no label (same day — eight services read "(unlabelled)" under No MDF / IDF)**: `field_1950` is a
   device designator, so services and licenses have none. `rowName`: the label, else the product, else the service
-  description (`field_2020`, tags stripped, cut at 90 characters), else the bucket. Services go under "Project Wide
-  Services" and licenses under "Licenses" whatever MDF/IDF they carry (`kindOf`: bucket id, else the bucket name),
-  after the MDF/IDFs and "No MDF / IDF"; a SERVICE / LICENSE tag sits before the name (an unlabelled other row shows
+  description (`field_2020`, tags stripped, cut at 90 characters), else the bucket. A service with NO MDF/IDF goes
+  under "Project Wide Services" (one WITH an MDF/IDF stays in it, as on the worksheet — fixed 2026-11-17, it used to
+  leave its MDF/IDF) and every license under "Licenses" whatever MDF/IDF it carries (`kindOf`: bucket id, else the
+  bucket name), after the MDF/IDFs and "No MDF / IDF"; a SERVICE / LICENSE tag sits before the name (an unlabelled other row shows
   its bucket). A bucket NAMED Assumptions is left out like the assumptions id. A line with no product has no model
   dropdown ("No product" — a select would preselect the bucket's first product) and the review lists it as
   "Services with no product". Test: `tests/sow-page/test-alternate-sow-labels.js`.

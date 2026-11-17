@@ -200,10 +200,11 @@
     // · field_2210 service description — the line itself when NO service is
     // picked (the product-less path stays), the detail of a Custom Service,
     // folded away under a catalog service · field_2233 expected sub bid ·
-    // field_2183 qty. NO MDF/IDF (2026-10-23): the worksheets never place a
-    // service by location — groups.js / bid-review-v2 transform.js route every
-    // Services line to the synthetic "Project Wide Services" group — so the
-    // row only read as a requirement. field_2250_raw rides the payload as [].
+    // field_2183 qty · an OPTIONAL MDF/IDF. A service WITH an MDF/IDF sits in
+    // that location on the worksheets, the reconcile grid and the proposal
+    // (groups.js / bid-review-v2 transform.js send only a service with NONE to
+    // the synthetic "Project Wide Services" group — corrected 2026-11-17; an
+    // earlier note here said the worksheets never place a service by location).
     // MULTI-select (2026-10-23): several services at once, one line each (Make
     // 02.01 iterates field_2195_raw). The typed description + sub bid belong to
     // the Custom Service line (or to a lone pick); other catalog services take
@@ -214,10 +215,8 @@
       { t: 'description', label: 'Describe the service', conditional: 'customService' },
       { t: 'serviceCost', label: 'Expected sub bid ($)' },
       { t: 'qty' },
-      // Optional — "it should ask" (2026-10-23): the worksheets file every
-      // service under Project Wide Services whatever this says, but the
-      // PROPOSAL groups lines by MDF/IDF, so a located service lists under
-      // its location there.
+      // Optional — "it should ask" (2026-10-23). Picked = the service lists in
+      // that MDF/IDF everywhere; left blank = Project Wide Services.
       { t: 'mdf', mode: 'opt' }
     ]},
     // field_2248 assumption catalog (Products in the Assumptions bucket) ·
