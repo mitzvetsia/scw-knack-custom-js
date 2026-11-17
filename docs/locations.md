@@ -388,6 +388,11 @@ Build SOW, CO, deploy) and by the SOW-create scenarios. Two actions:
   Add MDF/IDF) has the same default but that page is deprecated, kept only to review historical projects — no fix needed. `SYS_merge progress` (object_96) and `SYS_merge lock` (object_74) do not exist yet, so
   22.03 v2 cannot be built for import; view_4167 / view_4168 still serve no `field_2845`.
 
+- **Builder done 2026-11-17** (fresh schema read): `SYS_merge progress` `field_3326` + `SYS_merge lock` `field_3325`
+  exist and the three site grids serve progress + lifecycle; the sub portal's Add Survey/Bid Item and New Add MDF/IDF
+  pages and their menus are deleted (so no live form defaults the project to the first record; view_2678 on the
+  deprecated old survey flow still does). 22.03 v2 delivered for import the same day.
+
 ### Next steps (as of 2026-11-02, partly superseded by the status above)
 Done 2026-11-02 / 11-03: the exports came in, the cleanup kit and the duplicate review list are built
 (see "Cleanup kit" above), and survey notes are a stamped log in the bundle. Nothing has been written

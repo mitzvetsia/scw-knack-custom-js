@@ -946,7 +946,11 @@ read 800 ms later); a busy refusal keeps the pick and says "Another merge is run
 only while no progress is readable (plus once at the end); a stall with no progress and no lifecycle column says the page
 cannot tell instead of spinning, and logs which column is missing. An older 22.03 ("Accepted", no reply) still works the
 old way. **Builder**: the two fields, then `SYS_merge progress` (+ `field_2845` on view_4167 / view_4168) as columns of the
-three site grids; the generator builds a DRY RUN until both fields exist.
+three site grids; the generator builds a DRY RUN until both fields exist. **Done 2026-11-17**: `SYS_merge progress` =
+`field_3326` (object_96), `SYS_merge lock` = `field_3325` (object_74), both short text; view_4166 / view_4167 / view_4168
+serve `field_3326` and `field_2845`. The import-ready "22.03 MDF-IDF merge (v2 parallel sites)" blueprint was built from
+that schema (`SCHEMA=schema-1117b/app.json python3 -I bp2203v2/gen.py`; deliver ONLY its 22.03 — the generator's 22.02 is
+the pre-survey version, superseded by the user's live export + patch2 / patch3).
 
 **The sub's "+ Add MDF/IDF" on the survey page is the custom modal (2026-11-12)** — "we're serving the knack native
 create record module which is not enforcing the install project connection (or making connections to the site)". The
