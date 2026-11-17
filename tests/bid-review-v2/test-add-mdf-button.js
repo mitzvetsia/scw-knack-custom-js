@@ -69,5 +69,11 @@ click(b2);
 ok(opens.length === 1 && opens[0].gridKey === 'view_4167' && opens[0].viewKey === 'view_3921' && opens[0].pageGridKey === 'view_3822',
   '… and opens the add window over the site grid, re-reading the page grid after');
 
+// the window is handed a way back to the native form (used when Make refuses a project with no site)
+ok(typeof opens[0].nativeFallback === 'function' && opens[0].nativeFallback() === false,
+  'the window gets a native fallback; with the menu deleted it reports there is none');
+document.body.appendChild(menu);
+ok(opens[0].nativeFallback() === true && nativeClicks === 2, '… and with the menu on the page it follows the native link');
+
 console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
 process.exit(fails ? 1 : 0);

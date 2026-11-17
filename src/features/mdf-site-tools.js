@@ -635,6 +635,23 @@
             fail('SCW has to finish setting up this project (it has no Site yet) before an MDF/IDF can be added here. Ask your SCW contact.');
             return;
           }
+          if (j.error === 'no-site') {
+            // A project often has NO site yet (sales creates projects without one; Ops assigns it
+            // when the project comes across — Micah 2026-11-17), and 22.02 refuses to create on
+            // such a project. Never leave the user with no way to add: hand over to the page's
+            // native Knack add form when it is still there (opts.nativeFallback), else say what
+            // is missing. Until 22.02 creates without a site, do NOT delete the native add pages.
+            var went = false;
+            try { went = typeof opts.nativeFallback === 'function' && !!opts.nativeFallback(); } catch (e2) { went = false; }
+            if (went) {
+              closeModal();
+              toast('This project has no Site yet, so the standard add form opened instead.');
+              return;
+            }
+            fail('This project has no Site yet, so the MDF/IDF could not be added here. ' +
+              'Once the project has its Site, add it again.');
+            return;
+          }
           fail((j.message || 'Make refused it (' + (j.error || r.status) + ').') +
             // A page that sees only part of the project's closets (the deploy grids hide proposed
             // ones) can pick a ## it cannot see is taken: say the way out.

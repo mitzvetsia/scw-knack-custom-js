@@ -1034,6 +1034,20 @@ Make's own creates (01.01 [269], 01.02 [162] / [167], 01.03 [67], 01.04 [12]) st
 closets on no project, the per-site merge worklist with a suggested keeper, sites ranked). Numbers and the run:
 docs/locations.md "Status from the 2026-11-17 exports".
 
+**A project often has NO site when its closets are made (2026-11-17 — "a sales person … can create a project
+without a site and the ops team assigns a site when the project comes across"; no address exists at SOW creation)**:
+22.02 refuses such a project (422 `no-site`), so the add window would have blocked sales. `openAdd` now takes
+`nativeFallback` (both toolbars pass it: `worksheet-v2/toolbar.js followNativeAddMdf`, the reconcile toolbar's menu
+link): on a `no-site` reply outside survey mode it follows the page's native Knack add form when one is still there
+("… the standard add form opened instead") and otherwise says the project has no Site yet. **So the native "Add
+MDF/IDF" pages + menus must STAY (view_3436 / view_3441 Build SOW, view_3654 / view_3656 sales, view_4136 /
+view_4137 sub deployment) until 22.02 creates on a project with no site.** Design direction proposed, not decided:
+closets are project-scoped until the project has a site; when Ops assigns the site the project's closets take it and
+Ops reconciles against the site's existing ones (the merge tool); optionally sales may PICK (never create) one of the
+company's known sites early. Data: 85 of the 287 sited projects created since 2026-07-20 (30%) landed at a site that
+already had a project (21% all-time), so 70% have nothing to see at SOW time. Tests: the no-site blocks in
+`tests/misc/test-mdf-project-add.js` and `tests/bid-review-v2/test-add-mdf-button.js`.
+
 **Closet survey notes are a stamped, append-only log (built 2026-11-02)** — `mdf-edit-core.js`
 `appendSurveyNote` / `renderSurveyLog`: a survey ADDS `[11/02/2026 · SR1145] text` on top of `field_2457` (GET
 first, then the shared PUT; the stamp names the survey record, NEVER the person or company; refuses to write

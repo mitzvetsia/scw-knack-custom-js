@@ -138,6 +138,16 @@ const hasAddMdf = (k) => /data-scw-ws-v2-action="add-mdf"/.test(html(k));
     [true, 'IDF 3 already exists on this project. Clear the ## to take the next free number.']);
   cancel();
 
+  // A project with NO site yet (sales creates projects without one): 22.02 refuses, so the window hands
+  // over to the page's native add form instead of leaving the rep with no way to add.
+  posts = []; timers.length = 0; nativeClicks = 0;
+  reply = { status: 422, body: '{"ok": false, "error": "no-site", "message": "This project has no Site. Set the project\'s Site first."}' };
+  ns.toolbar._handleAction('add-mdf', 'view_3586');
+  $m('[data-act="add"]').click(); await flush(); await flush();
+  check('no site on the project: the native add form opens and the window closes',
+    [nativeClicks, !overlay(), (document.querySelector('.scw-mst-toast') || {}).textContent],
+    [1, true, 'This project has no Site yet, so the standard add form opened instead.']);
+
   // HEADEND: no ##
   posts = [];
   reply = { status: 200, body: '{"ok": true, "created": true, "id": "new2", "number": "", "type": "HEADEND"}' };
@@ -209,7 +219,9 @@ const hasAddMdf = (k) => /data-scw-ws-v2-action="add-mdf"/.test(html(k));
   reply = { status: 422, body: '{"ok": false, "error": "no-site", "message": "This project has no Site. Set the project\'s Site first."}' };
   ns.toolbar._handleAction('add-mdf', 'view_4056');
   $m('[data-act="add"]').click(); await flush(); await flush();
-  check("Make's refusal is shown and the window stays", [!!overlay(), /This project has no Site/.test($m('.scw-mst-note').textContent)], [true, true]);
+  check('no site and no native form left on the page: the window stays and says what is missing',
+    [!!overlay(), $m('.scw-mst-note').textContent],
+    [true, 'This project has no Site yet, so the MDF/IDF could not be added here. Once the project has its Site, add it again.']);
   cancel();
 
   console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');

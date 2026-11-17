@@ -205,6 +205,41 @@
     return true;
   }
 
+  /** Open the page's NATIVE Knack "Add MDF/IDF" form → true when a link was followed. The
+   *  toolbar's own action when the custom window cannot run, and the window's way out when Make
+   *  refuses a project that has no site yet (mdf-site-tools openAdd `nativeFallback`). */
+  function followNativeAddMdf(viewKey) {
+    // Same pattern as addSowMenuView: the configured Knack menu view's
+    // link IS the add-location action (e.g. view_3436 → #add-mdfidf7).
+    // Clicking the CSS-hidden anchor still navigates.
+    try {
+      var _mdfVc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+      var _mdfMenuId = _mdfVc && _mdfVc.addMdfMenuView;
+      if (_mdfMenuId) {
+        var _mdfLink = document.querySelector(
+          '#' + _mdfMenuId + ' a.kn-link-page, #' + _mdfMenuId + ' a.kn-link, #' + _mdfMenuId + ' a[href]'
+        );
+        if (_mdfLink) { _mdfLink.click(); return true; }
+      }
+    } catch (e) { /* fall through to text scan */ }
+    // No configured menu — use whatever Add MDF/IDF menu link the scene
+    // carries (the same one that made the button render).
+    var _mdfFound = findAddMdfMenuLink();
+    if (_mdfFound) { _mdfFound.link.click(); return true; }
+    // Fallback: any live "Add MDF/IDF" link on the page (incl. the
+    // accordion action-bar copy accordion-menu-inject builds).
+    var mdfAnchors = document.querySelectorAll('a.kn-link, .scw-acc-action-btn, .kn-link-page, a');
+    for (var mi = 0; mi < mdfAnchors.length; mi++) {
+      var mTxt = (mdfAnchors[mi].textContent || '').trim();
+      if (/^add mdf\s*\/\s*idf$/i.test(mTxt) &&
+          (mdfAnchors[mi].getAttribute('href') || mdfAnchors[mi].hasAttribute('data-link-href'))) {
+        mdfAnchors[mi].click();
+        return true;
+      }
+    }
+    return false;
+  }
+
   function build(viewKey) {
     var _vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
     var addLabel = (_vc && _vc.addItemLabel) ? ('+ ' + _vc.addItemLabel) : '+ Add to SOW';
@@ -478,7 +513,8 @@
       var _pageMode = window.SCW.mdfSiteTools && typeof SCW.mdfSiteTools.addModeFor === 'function'
         ? SCW.mdfSiteTools.addModeFor(viewKey) : '';
       if (_pageMode) {
-        SCW.mdfSiteTools.openAdd({ viewKey: viewKey, gridKey: SCW.mdfSiteTools.pageGridOf(viewKey), mode: _pageMode });
+        SCW.mdfSiteTools.openAdd({ viewKey: viewKey, gridKey: SCW.mdfSiteTools.pageGridOf(viewKey), mode: _pageMode,
+                                   nativeFallback: function () { return followNativeAddMdf(viewKey); } });
         return;
       }
       // Every login since 2026-11-17: the window reads the site twin of the page's closet grid;
@@ -486,37 +522,11 @@
       var _addGrid = window.SCW.mdfSiteTools && typeof SCW.mdfSiteTools.addGridFor === 'function'
         ? SCW.mdfSiteTools.addGridFor(_siteGrid) : '';
       if (_addGrid) {
-        SCW.mdfSiteTools.openAdd({ viewKey: viewKey, gridKey: _addGrid, pageGridKey: _siteGrid });
+        SCW.mdfSiteTools.openAdd({ viewKey: viewKey, gridKey: _addGrid, pageGridKey: _siteGrid,
+                                   nativeFallback: function () { return followNativeAddMdf(viewKey); } });
         return;
       }
-      // Same pattern as addSowMenuView: the configured Knack menu view's
-      // link IS the add-location action (e.g. view_3436 → #add-mdfidf7).
-      // Clicking the CSS-hidden anchor still navigates.
-      try {
-        var _mdfVc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
-        var _mdfMenuId = _mdfVc && _mdfVc.addMdfMenuView;
-        if (_mdfMenuId) {
-          var _mdfLink = document.querySelector(
-            '#' + _mdfMenuId + ' a.kn-link-page, #' + _mdfMenuId + ' a.kn-link, #' + _mdfMenuId + ' a[href]'
-          );
-          if (_mdfLink) { _mdfLink.click(); return; }
-        }
-      } catch (e) { /* fall through to text scan */ }
-      // No configured menu — use whatever Add MDF/IDF menu link the scene
-      // carries (the same one that made the button render).
-      var _mdfFound = findAddMdfMenuLink();
-      if (_mdfFound) { _mdfFound.link.click(); return; }
-      // Fallback: any live "Add MDF/IDF" link on the page (incl. the
-      // accordion action-bar copy accordion-menu-inject builds).
-      var mdfAnchors = document.querySelectorAll('a.kn-link, .scw-acc-action-btn, .kn-link-page, a');
-      for (var mi = 0; mi < mdfAnchors.length; mi++) {
-        var mTxt = (mdfAnchors[mi].textContent || '').trim();
-        if (/^add mdf\s*\/\s*idf$/i.test(mTxt) &&
-            (mdfAnchors[mi].getAttribute('href') || mdfAnchors[mi].hasAttribute('data-link-href'))) {
-          mdfAnchors[mi].click();
-          return;
-        }
-      }
+      if (followNativeAddMdf(viewKey)) return;
       alert('Could not find the "Add MDF/IDF" link on this page. ' +
             'Make sure the Knack menu link is enabled on the scene.');
       return;

@@ -185,7 +185,14 @@
     var addGrid = window.SCW.mdfSiteTools && typeof SCW.mdfSiteTools.addGridFor === 'function'
       ? SCW.mdfSiteTools.addGridFor(siteGrid) : '';
     if (addGrid) {
-      SCW.mdfSiteTools.openAdd({ viewKey: 'view_3921', gridKey: addGrid, pageGridKey: siteGrid });
+      SCW.mdfSiteTools.openAdd({ viewKey: 'view_3921', gridKey: addGrid, pageGridKey: siteGrid,
+        // Make refuses a project with no site yet: hand over to the native form when it is there.
+        nativeFallback: function () {
+          var nat = findAddMdfMenuLink();
+          if (!nat) return false;
+          nat.link.click();
+          return true;
+        } });
       return;
     }
     var found = findAddMdfMenuLink();
