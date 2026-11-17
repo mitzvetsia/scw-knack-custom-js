@@ -590,7 +590,11 @@
         viewKey: opts.viewKey || ''
       };
       if (project) {
-        payload.numberScope = 'project';
+        // The page normally sees one project's closets, so the ## is numbered on the project.
+        // Once the page's list holds the SITE's closets (mdf-site-remote.js, site route) the ##
+        // is the site's: no numberScope = 22.02's default, numbering and checking on the site.
+        var siteWide = !!(SCW.mdfSiteRemote && typeof SCW.mdfSiteRemote.loaded === 'function' && SCW.mdfSiteRemote.loaded(gridKey));
+        if (!siteWide) payload.numberScope = 'project';
         if (pageProj.sowId) payload.sowId = pageProj.sowId;      // informational: the SOW page it came from
       }
       var surveyEntry = '';

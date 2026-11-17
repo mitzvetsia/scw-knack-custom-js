@@ -253,6 +253,7 @@ cat \
   src/features/worksheet-v2/sow-add-item-form.js \
   src/features/mdf-site-route.js \
   src/features/mdf-site-tools.js \
+  src/features/mdf-site-remote.js \
   src/features/worksheet-v2/photo-assign.js \
   src/features/worksheet-v2/co-scene-header.js \
   src/features/worksheet-v2/co-value.js \

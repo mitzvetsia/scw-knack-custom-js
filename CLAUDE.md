@@ -1078,6 +1078,19 @@ scene_1085 sits under the Projects login, so sales will likely need the same gri
 (scene_1127). Model settled in the same thread: MDF/IDF, Position (later) and installed item connect to the site; a
 SOW line reaches it through its project and, when it has one, its MDF/IDF (services may have one: "services also
 MIGHT connect to a specific location"); no site field on the SOW or on a line.
+**Built on that read (same day, PREVIEW = the site route) — `mdf-site-remote.js`**: on the sales Scope of Work
+Details page the module reads the site's closets (sources tried in order: a Sales Portal grid on scene_1127 —
+Builder TBD, `CONFIG.pages.view_3602.sources[0].view` — then BUILD SOW's view_4166 with `build-sow_id`), and ADDS the
+ones the page lacks to the model of the page's own grid view_3602 (`_scwSiteRemote: true`, merged ones skipped,
+`data.add` silent + `worksheetV2.data.notify('view_3586')`), so the worksheet's MDF/IDF groups, pickers, add-item
+window and "+ Add MDF/IDF" all list the site's closets with no consumer change. Re-added from a 60 s cache on every
+render of view_3602; `SCW.mdfSiteRemote.refresh('view_3602')` re-reads; a refused read leaves the page as it was
+(one console warning). `mdf-notes.js openPanel` shows a read-only note for a `_scwSiteRemote` closet (this page's
+grid cannot write it — no rename / delete); the add window in project mode sends no `numberScope` once the list is
+the site's (`loaded()`), so 22.02 numbers on the site. Off the route nothing is read. NOT done: the installed items
+per MDF/IDF (needs a Builder grid "INSTALL_line items connected to the Site connected to this project" on a
+project page), a marker on the group header for a site closet, the inline notes band on a site closet (its save goes
+through view_3602 and may be refused). Test: `tests/misc/test-mdf-site-remote.js`.
 Tests: the no-site blocks in
 `tests/misc/test-mdf-project-add.js` and `tests/bid-review-v2/test-add-mdf-button.js`.
 

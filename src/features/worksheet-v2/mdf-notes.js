@@ -1291,6 +1291,20 @@
     var attrs = manageAttrs(cfg.viewKey, l1Id);
     if (!attrs) { alert('Location record not loaded yet — try again in a moment.'); return; }
 
+    // A closet the page only knows from the site read (mdf-site-remote.js): it is at the
+    // site but was not created on this project, and this page's grid cannot write it.
+    if (attrs._scwSiteRemote) {
+      var ro = document.createElement('div');
+      ro.className = P + '-panel ' + P + '-panel--remote';
+      ro.innerHTML = '<div class="' + P + '-actions"><span class="' + P + '-status">' +
+        'This MDF/IDF is already at the site. It was not added on this project, so it can be used here ' +
+        'but not renamed or deleted from this page.</span></div>';
+      var roHead = block.querySelector(':scope > .scw-ws-v2-l1-head-wrap');
+      if (roHead && roHead.nextSibling) block.insertBefore(ro, roHead.nextSibling);
+      else block.appendChild(ro);
+      return;
+    }
+
     var dn    = parseDisplayName(fieldText(attrs, F.displayName));
     var type  = fieldText(attrs, F.type) || dn.type;
     var num   = fieldText(attrs, F.num)  || dn.num;
