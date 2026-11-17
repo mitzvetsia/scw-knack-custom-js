@@ -376,7 +376,18 @@ Build SOW, CO, deploy) and by the SOW-create scenarios. Two actions:
   emits an empty array when the site has no closets; `max()` / `contains()` over the `idfNo` strings; the `+` text
   joins and `newline` in the notes append; `field_2845` / `field_1641` written as one-item arrays.
 
-### Next steps
+### Status 2026-11-17 (schema read today + the last export, 11-10 02:44)
+- **Imports 1–4 + the IDF 10+ re-save landed** (checked against the 11-10 exports): 3,136 of 3,233 closets have a
+  site, 30 have no project, 35 still sit on Pour Taproom, 97 have no site. 159 are `installed`, none `merged` yet in
+  that export (app merges since then are not in it).
+- **Duplicates at a site (11-10)**: 318 sites carry 2+ HEADEND/MDF, 48 sites repeat an IDF ##; 1,340 HEADENDs are
+  unnamed. Merging is done in the app (preview, micah.shearer only).
+- **Builder**: `field_1648`'s object default is now none, but the five forms still set the project input to "first"
+  (view_2678, view_3628, view_3630, view_3781, view_3773 — radio, `conn_default: first`), so a create through them
+  still lands on Pour Taproom. `SYS_merge progress` (object_96) and `SYS_merge lock` (object_74) do not exist yet, so
+  22.03 v2 cannot be built for import; view_4167 / view_4168 still serve no `field_2845`.
+
+### Next steps (as of 2026-11-02, partly superseded by the status above)
 Done 2026-11-02 / 11-03: the exports came in, the cleanup kit and the duplicate review list are built
 (see "Cleanup kit" above), and survey notes are a stamped log in the bundle. Nothing has been written
 to Knack yet. What is left, in order:
