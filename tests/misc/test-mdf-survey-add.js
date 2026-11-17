@@ -223,7 +223,9 @@ const clickAdd = () => $m('[data-act="add"]').click();
   check('… whose click opens the add window', !!document.querySelector('.scw-mst-overlay'), true);
   const cancelBtn = document.querySelector('.scw-mst-overlay [data-act="cancel"]');
   if (cancelBtn) cancelBtn.click();
-  check('the sub deployment clone (project grid view_4060) never gets it', hasAddMdf('view_4056'), false);
+  check('the sub deployment clone (project grid view_4060, no site twin) gets it through PROJECT mode instead',
+    [hasAddMdf('view_4056'), window.SCW.mdfSiteTools.canAdd('view_4060'), window.SCW.mdfSiteTools.addModeFor('view_4056')],
+    [true, false, 'project']);
   localStorage.removeItem('scwMdfSiteRoute');
 
   console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');

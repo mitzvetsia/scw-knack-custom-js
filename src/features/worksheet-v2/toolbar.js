@@ -163,8 +163,13 @@
     // Knack menu: the old native page (#new-add-mdfidf, view_3773) and its menu view
     // (view_3509) can be deleted in Builder without hiding the button. The menu is
     // still hidden when it is there, as before.
-    if (_vc.mdfAddModal === 'survey' && viewKey && window.SCW && SCW.mdfSiteTools &&
-        typeof SCW.mdfSiteTools.canAddSurvey === 'function' && SCW.mdfSiteTools.canAddSurvey(viewKey)) {
+    // The same holds for PROJECT mode (mdfAddModal: 'project' — the sales SOW page and the sub's
+    // deployment dashboard, 2026-11-17): their native pages (view_3656 / view_4137) and menus
+    // (view_3654 / view_4136) can go too.
+    if (_vc.mdfAddModal && viewKey && window.SCW && SCW.mdfSiteTools &&
+        (typeof SCW.mdfSiteTools.addModeFor === 'function'
+          ? !!SCW.mdfSiteTools.addModeFor(viewKey)
+          : (typeof SCW.mdfSiteTools.canAddSurvey === 'function' && SCW.mdfSiteTools.canAddSurvey(viewKey)))) {
       var _menuEl = _vc.addMdfMenuView && document.getElementById(_vc.addMdfMenuView);
       if (_menuEl) _menuEl.style.setProperty('display', 'none', 'important');
       return true;
@@ -468,9 +473,12 @@
       var _siteGrid = _siteVc && _siteVc.mdfSourceViewKey;
       // The sub's survey page (mdfAddModal: 'survey'): the same modal for every login — the
       // closet lands on the request's project + site, linked to the survey request.
-      if (window.SCW.mdfSiteTools && typeof SCW.mdfSiteTools.canAddSurvey === 'function' &&
-          SCW.mdfSiteTools.canAddSurvey(viewKey)) {
-        SCW.mdfSiteTools.openAdd({ viewKey: viewKey, gridKey: SCW.mdfSiteTools.surveyGridOf(viewKey), mode: 'survey' });
+      // PROJECT mode (mdfAddModal: 'project' — the sales SOW page, the sub's deployment
+      // dashboard): the same modal over the page's own project closets.
+      var _pageMode = window.SCW.mdfSiteTools && typeof SCW.mdfSiteTools.addModeFor === 'function'
+        ? SCW.mdfSiteTools.addModeFor(viewKey) : '';
+      if (_pageMode) {
+        SCW.mdfSiteTools.openAdd({ viewKey: viewKey, gridKey: SCW.mdfSiteTools.pageGridOf(viewKey), mode: _pageMode });
         return;
       }
       // Every login since 2026-11-17: the window reads the site twin of the page's closet grid;

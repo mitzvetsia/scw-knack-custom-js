@@ -365,9 +365,14 @@
                               title: 'This SOW already has a ClickUp task — ' +
                                 'locations can’t be deleted once work is initiated.'
                             } },
-        // "+ Add MDF/IDF" toolbar CTA — clicks the (hidden) view_3654 menu
-        // link (accordion-menu-inject hoisted it into the now-hidden
-        // standalone section), replacing the button that lived there.
+        // "+ Add MDF/IDF" toolbar CTA — the custom closet modal in PROJECT mode
+        // (mdf-site-tools.js, 2026-11-17): Make 22.02 creates the closet on the
+        // SOW's project (read off view_3491's REL_project) and its site. The
+        // native form it replaces (view_3656 on new-add-mdfidf2) set no site.
+        // view_3654's menu link (accordion-menu-inject hoisted it into the
+        // now-hidden standalone section) is only the fallback when the modal
+        // cannot run (no hook); the menu + page can be deleted in Builder.
+        mdfAddModal:      'project',
         addMdfMenuView:   'view_3654',
         moneyMode:        'sales',
         hideSow:          true,          // no SOW column / pills / sort on this page
@@ -883,6 +888,13 @@
     // in Builder, but the sub's closet panel offers no Delete.
     clone.mdfManage          = { viewKey: 'view_4060', notesField: 'field_1643',
                                  surveyLog: 'own', noDelete: true };
+    // "+ Add MDF/IDF" = the custom closet modal in PROJECT mode (mdf-site-tools.js,
+    // 2026-11-17): the page record is the project; Make 22.02 creates the closet on
+    // it and its site, lifecycle approved (view_4060 hides `proposed`, so a proposed
+    // closet would vanish from the page that just added it). The native form it
+    // replaces (view_4137 on add-mdfidf3) set no site; the inherited menu view_4136
+    // is only the fallback when the modal cannot run (no hook) and can be deleted.
+    clone.mdfAddModal        = 'project';
     // Designator editing is an SCW-ops gesture (deploy page only) — the sub
     // never re-labels installed items.
     delete clone.designatorEdit;

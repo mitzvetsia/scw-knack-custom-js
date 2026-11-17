@@ -935,8 +935,22 @@ site twin (`mdf-site-route.js twin`: view_3577 → view_4166, view_3822 → view
 the twin and `pageGridKey` = the page's own grid, which `openAdd` re-reads after a create too (off the route the
 worksheet's groups and pickers still read the project grid). So the deploy page (scene_1311 — it has NO native add menu;
 the `addMdfMenuView: 'view_4136'` it inherits is on the sub's dashboard) shows it, and the native "Add MDF/IDF" page +
-menu on Build SOW (view_3441 / view_3436) can be deleted. The sales SOW page (view_3602) and the sub's deployment
-dashboard (view_4060) have no site twin and keep their native forms. On the deploy page Merge lists the site grid view_4168, which filters out `proposed` closets — merge a sub's
+menu on Build SOW (view_3441 / view_3436) can be deleted.
+**PROJECT mode — the sales SOW page and the sub's deployment dashboard (2026-11-17 — "let's get the custom modal on
+these two pages")**: neither has a site twin (a SOW page is two hops from the site), so worksheet-v2 view_3586 and the
+view_4056 clone carry `mdfAddModal: 'project'` and the toolbar opens the same window through
+`mdfSiteTools.addModeFor(viewKey)` ('survey' | 'project' | '') / `pageGridOf`: it lists the PROJECT's closets off the
+page's own grid (view_3602 / view_4060), numbers on the project (`numberScope: 'project'`, the survey page's rule — the
+page cannot see another project's closets) and posts 22.02's existing project route (`projectId`, no survey request →
+project + site), `lifecycle: 'approved'` (the deploy grids filter out `proposed`, so anything else would vanish from the
+page that just added it; the native forms wrote a blank lifecycle, which showed too), `source: 'project-modal'`,
+`sowId` on the SOW page. No Make change. `pageProject()`: the id after a project page slug (`pageSlugs` now includes
+`deployment-dashboard`, scene_1353's record IS the project), else the SOW's single-record view that shows REL_project
+`field_2119` (view_3491; the page's own SOW = the LAST id in the route wins on a nested route), else a single-record
+view bound to the project (the SOW page's project forms view_3492 / view_2924); asked again at the click. A
+`number-taken` refusal in this mode adds "Clear the ## to take the next free number." (view_4060 hides proposed closets
+the page cannot see are numbered). The native pages + menus (sales view_3656 / view_3654, sub view_4137 / view_4136) can
+be deleted; with no hook the button still follows the native link. Test: `tests/misc/test-mdf-project-add.js`. On the deploy page Merge lists the site grid view_4168, which filters out `proposed` closets — merge a sub's
 not-yet-reviewed duplicate from Build SOW. Tests: the deploy block in `tests/misc/test-mdf-survey-add.js`,
 `tests/bid-review-v2/test-add-mdf-button.js`.
 **The merge waits with a real progress bar** ("we'll get too much 'is it working?'"): the window stays open, no close /

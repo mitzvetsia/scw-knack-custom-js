@@ -13,6 +13,12 @@
  * project's site, re-checks the ##, creates the closet on the project ("created on") AND the site,
  * and answers { ok, id } (409 number-taken, 422 no-site).
  *
+ * PROJECT mode (2026-11-17, every login): the sales SOW page (worksheet view_3586, closets view_3602)
+ * and the sub's deployment dashboard (worksheet view_4056, closets view_4060) have no site grid. Their
+ * worksheet config says `mdfAddModal: 'project'`: the same modal over the page's own project closets,
+ * ## on the project (numberScope 'project'), lifecycle approved, 22.02's project route (project +
+ * site). The SOW page's project comes off view_3491's REL_project. See "PROJECT mode" below.
+ *
  * SURVEY mode (LIVE for every login, 2026-11-12 — not behind the site route): the sub's survey
  * worksheet (view_3505, config `mdfAddModal: 'survey'`) opens the same modal over the request's
  * project's closets (view_3617). The page cannot always tell its project, so 22.02 reads it off the
@@ -46,7 +52,14 @@
       type: 'field_1641', num: 'field_2458', name: 'field_1943', display: 'field_1642',
       notes: 'field_1643', lifecycle: 'field_2845', project: 'field_1648'
     },
-    pageSlugs: ['build-sow', 'review-bids', 'deploy'],
+    // Pages whose record IS the project (the id after the slug). 'deployment-dashboard' is the
+    // sub's deployment page (scene_1353, object_3).
+    pageSlugs: ['build-sow', 'review-bids', 'deploy', 'deployment-dashboard'],
+    // PROJECT mode (mdfAddModal: 'project' — pages with no site grid): how a page that is NOT
+    // the project names its project. The sales SOW page (scene_1116) is a SOW record: its
+    // details view shows REL_project (field_2119), and two forms on it are bound to the project.
+    sowProjectField: 'field_2119',
+    projectObject: 'object_3',
     mergePollMs: [5000, 12000, 25000, 45000, 75000, 120000],   // background re-reads (after a stalled window is closed)
     progressPollMs: 2000,     // the merge window reads the keeper's progress this often
     gridCheckEvery: 3,        // … and re-reads the site grid every Nth poll (losers merged / gone)
@@ -125,6 +138,68 @@
   function canAddSurvey(viewKey) {
     return !!(surveyGridOf(viewKey) && hook('MAKE_MDF_IDF_WEBHOOK') && previewOk() && surveyCtx());
   }
+
+  // ── PROJECT mode (2026-11-17): pages with no site grid ────────────────
+  // The sales SOW page (scene_1116, worksheet view_3586, closets view_3602) and the sub's
+  // deployment dashboard (scene_1353, worksheet view_4056, closets view_4060) read the PROJECT's
+  // closets and cannot host a site grid (a SOW page is two hops from the site). Their worksheet
+  // config says `mdfAddModal: 'project'`: the same window lists the project's closets off the
+  // page's own grid, numbers on the project (numberScope 'project', as on the survey page — the
+  // page cannot see another project's closets), and posts 22.02's project route, which puts the
+  // closet on the project AND its site, lifecycle approved (the deploy grids hide `proposed`, so
+  // anything else would vanish from the page that just added it). Replaces the native forms
+  // view_3656 (new-add-mdfidf2) and view_4137 (add-mdfidf3), which set no site.
+  function projectGridOf(viewKey) {
+    var vc = viewCfgOf(viewKey);
+    return (vc && vc.mdfAddModal === 'project' && vc.mdfSourceViewKey) || '';
+  }
+  function canAddProject(viewKey) {
+    return !!(projectGridOf(viewKey) && hook('MAKE_MDF_IDF_WEBHOOK'));
+  }
+  /** Which page mode "+ Add MDF/IDF" runs in for this worksheet right now: 'survey', 'project'
+   *  or '' (the site window / the native link decide). */
+  function addModeFor(viewKey) {
+    if (canAddSurvey(viewKey)) return 'survey';
+    if (canAddProject(viewKey)) return 'project';
+    return '';
+  }
+  /** The closet grid the page-mode window reads for this worksheet. */
+  function pageGridOf(viewKey) { return surveyGridOf(viewKey) || projectGridOf(viewKey); }
+  /** The project of a page that is not a site-grid page → { id, sowId }.
+   *  1. the page record is the project (the id after a project page slug, deepest occurrence);
+   *  2. a SOW's single-record view on the page that shows REL_project (the sales SOW page's
+   *     view_3491) — the page's own SOW first (the LAST id in the route), else the only one;
+   *  3. a single-record view BOUND to the project (the SOW page's project forms). */
+  function pageProject() {
+    var out = { id: projectFromHash(), sowId: '' };
+    if (out.id) return out;
+    var own = Object.prototype.hasOwnProperty;
+    var pf = CONFIG.sowProjectField + '_raw';
+    var ids = String(window.location.hash || '').match(/[0-9a-f]{24}/g) || [];
+    var pageId = ids.length ? ids[ids.length - 1] : '';
+    var named = [], bound = '';
+    try {
+      var views = (window.Knack && Knack.views) || {};
+      for (var vk in views) {
+        if (!own.call(views, vk)) continue;
+        var mdl = views[vk] && views[vk].model;
+        var a = mdl && mdl.attributes;
+        if (!a || (mdl.data && mdl.data.models)) continue;          // single-record views only
+        if (Array.isArray(a[pf]) && a[pf][0] && a[pf][0].id) named.push({ rec: a.id || mdl.id || '', project: a[pf][0].id });
+        var src = mdl.view && mdl.view.source && mdl.view.source.object;
+        var rid = String(mdl.id || a.id || '');
+        if (!bound && src === CONFIG.projectObject && /^[0-9a-f]{24}$/.test(rid)) bound = rid;
+      }
+    } catch (e) { /* not on a Knack page */ }
+    for (var i = 0; i < named.length; i++) {
+      if (named[i].rec && named[i].rec === pageId) return { id: named[i].project, sowId: pageId };
+    }
+    if (named.length) {
+      var same = named.every(function (x) { return x.project === named[0].project; });
+      if (same) return { id: named[0].project, sowId: named[0].rec || '' };
+    }
+    return { id: bound, sowId: '' };
+  }
   /** The survey request's project when the page happens to carry it (view_3504's REL_project
    *  field_2346, else a closet on the grid). Informational only: 22.02 reads the project off the
    *  survey request itself, so a survey page that cannot tell still adds closets. */
@@ -174,7 +249,7 @@
   }
   /** The page's project: the record after the page slug, deepest occurrence first (Knack nests
    *  pages, so the hash can carry several; never take the first match). */
-  function projectId() {
+  function projectFromHash() {
     var h = String(window.location.hash || '');
     var best = '';
     for (var i = 0; i < CONFIG.pageSlugs.length; i++) {
@@ -183,7 +258,12 @@
       while ((m = re.exec(h))) best = m[1];
       if (best) return best;
     }
-    var all = h.match(/[0-9a-f]{24}/g);
+    return '';
+  }
+  function projectId() {
+    var best = projectFromHash();
+    if (best) return best;
+    var all = String(window.location.hash || '').match(/[0-9a-f]{24}/g);
     return all ? all[all.length - 1] : '';
   }
 
@@ -391,13 +471,17 @@
   }
 
   // ── "+ Add MDF/IDF" ──────────────────────────────────────────────────
-  /** opts: { viewKey (host), gridKey (the closet grid), mode?: 'survey' }
-   *  site mode (the site route): the grid is a SITE grid, ## is checked at the site.
+  /** opts: { viewKey (host), gridKey (the closet grid), mode?: 'survey' | 'project' }
+   *  site mode (pages with a site grid): the grid is a SITE grid, ## is checked at the site.
    *  survey mode (the sub's survey page): the grid is the request's project's closets, ## is
-   *  checked on the project, the closet is proposed and linked to the survey request. */
+   *  checked on the project, the closet is proposed and linked to the survey request.
+   *  project mode (the sales SOW page, the sub's deployment dashboard): the grid is the page's
+   *  project's closets, ## is checked on the project, the closet is approved. */
   function openAdd(opts) {
     opts = opts || {};
     var survey = opts.mode === 'survey';
+    var project = opts.mode === 'project';
+    var onProject = survey || project;       // the page sees one project's closets, not the site's
     var gridKey = opts.gridKey;
     /** The site grid the window reads, plus — for a login off the site route, whose worksheet
      *  groups and pickers still read the PROJECT grid — that grid too (opts.pageGridKey), so the
@@ -409,11 +493,14 @@
     }
     var site = live(closets(gridKey));
     var ctx = survey ? surveyCtx() : null;
-    var pid = survey ? (ctx ? surveyProjectId(ctx.id, gridKey) : '') : projectId();
-    var where = survey ? 'on this project' : 'at this site';
+    var pageProj = project ? pageProject() : null;
+    var pid = survey ? (ctx ? surveyProjectId(ctx.id, gridKey) : '') : project ? pageProj.id : projectId();
+    var where = onProject ? 'on this project' : 'at this site';
     var ov = survey
       ? shell('Add MDF/IDF', 'Add a closet you found on this survey. Check it is not already listed first — ' +
           'SCW reviews every new MDF/IDF.')
+      : project
+      ? shell('Add MDF/IDF', 'Add an MDF/IDF to this project. Check it is not already listed first.')
       : shell('Add MDF/IDF',
           'MDF/IDFs belong to the <b>site</b>: a new one shows on every project at this site. ' +
           'Check it is not already here first.');
@@ -423,8 +510,8 @@
       return (parseFloat(a.number) || 0) - (parseFloat(b.number) || 0) || labelOf(a).localeCompare(labelOf(b));
     }).map(function (c) {
       return '<div class="' + P + '-row"><div>' + esc(labelOf(c)) +
-        (!survey && c.projectId && c.projectId !== pid ? '<small>created on another project at this site</small>' : '') +
-        (survey && c.lifecycle === 'proposed' ? '<small>added on a survey · SCW has not reviewed it yet</small>' : '') +
+        (!onProject && c.projectId && c.projectId !== pid ? '<small>created on another project at this site</small>' : '') +
+        (onProject && c.lifecycle === 'proposed' ? '<small>added on a survey · SCW has not reviewed it yet</small>' : '') +
         '</div></div>';
     }).join('');
     body.innerHTML =
@@ -483,7 +570,12 @@
       if (!check()) return;
       if (survey && !ctx) { fail('Could not tell which survey this page is. Reload the page and try again.'); return; }
       // The survey page need not know its project: 22.02 reads it off the survey request.
-      if (!survey && !pid) { fail('Could not tell which project this page is.'); return; }
+      if (project && !pid) {
+        // A view may have finished loading since the window opened: ask once more.
+        pageProj = pageProject();
+        pid = pageProj.id;
+      }
+      if (!survey && !pid) { fail('Could not tell which project this page is. Reload the page and try again.'); return; }
       var notesText = String(body.querySelector('[data-in="notes"]').value || '').trim();
       var payload = {
         action: 'create',
@@ -494,9 +586,13 @@
         notes: survey ? '' : notesText,
         lifecycle: survey ? 'proposed' : 'approved',
         triggeredBy: email(),
-        source: survey ? 'survey-modal' : 'modal',
+        source: survey ? 'survey-modal' : project ? 'project-modal' : 'modal',
         viewKey: opts.viewKey || ''
       };
+      if (project) {
+        payload.numberScope = 'project';
+        if (pageProj.sowId) payload.sowId = pageProj.sowId;      // informational: the SOW page it came from
+      }
       var surveyEntry = '';
       if (survey) {
         surveyEntry = notesText && SCW.mdfEdit && typeof SCW.mdfEdit.composeSurveyEntry === 'function'
@@ -515,7 +611,8 @@
           closeModal();
           var what = j.type === 'IDF' || type === 'IDF' ? 'IDF ' + pad(j.number || payload.number) : 'HEADEND';
           toast('Added ' + what + (payload.name ? ': ' + payload.name : '') + '. ' +
-            (survey ? 'It is on this survey now; SCW reviews it.' : 'It shows on every project at this site.'));
+            (survey ? 'It is on this survey now; SCW reviews it.'
+              : project ? 'It is on this project now.' : 'It shows on every project at this site.'));
           // An older 22.02 drops surveyNotes; the page adds the note itself then.
           var appendNote = survey && surveyEntry && j.id && j.surveyNotesSaved !== true;
           CONFIG.createRefreshMs.forEach(function (ms, i) {
@@ -538,7 +635,10 @@
             fail('SCW has to finish setting up this project (it has no Site yet) before an MDF/IDF can be added here. Ask your SCW contact.');
             return;
           }
-          fail(j.message || 'Make refused it (' + (j.error || r.status) + ').');
+          fail((j.message || 'Make refused it (' + (j.error || r.status) + ').') +
+            // A page that sees only part of the project's closets (the deploy grids hide proposed
+            // ones) can pick a ## it cannot see is taken: say the way out.
+            (j.error === 'number-taken' && project ? ' Clear the ## to take the next free number.' : ''));
           return;
         }
         if (survey && r.status >= 200 && r.status < 300) {
@@ -1064,6 +1164,10 @@
     CONFIG: CONFIG,
     canAdd: canAdd,
     canAddSurvey: canAddSurvey,
+    canAddProject: canAddProject,
+    addModeFor: addModeFor,
+    pageGridOf: pageGridOf,
+    pageProject: pageProject,
     surveyGridOf: surveyGridOf,
     surveyProjectId: surveyProjectId,
     canMerge: canMerge,
