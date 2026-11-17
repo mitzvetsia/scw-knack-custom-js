@@ -651,6 +651,65 @@ window.SCW = window.SCW || {};
   };
 
   /**
+   * SCW.sceneCrumbs(scene) → [{ name, value }] — the parent-record "crumbs" Knack sends with a
+   * grid's read on a page that has a record (`<slug>_id=<id>`). Knack does NOT put them in
+   * model.url(); it adds them as request data at send time, and a read of a grid filtered
+   * through the page's record WITHOUT them comes back empty (change-record-limit.js 2026-10-07;
+   * the MDF/IDF merge window's progress reads 2026-11-17). Every form on the scene carries them
+   * as hidden `input.crumb`s with the exact names Knack sends; the page address (slug/id pairs)
+   * is the fallback when the scene has no form. Same rule as change-record-limit.js.
+   */
+  namespace.sceneCrumbs = function (scene) {
+    var out = [], seen = {};
+    var sceneEl = scene ? document.getElementById('kn-' + scene) : null;
+    var inputs = (sceneEl || document).querySelectorAll('input.crumb[name]');
+    for (var i = 0; i < inputs.length; i++) {
+      var n = inputs[i].getAttribute('name'), v = inputs[i].value;
+      if (!n || !v || seen[n]) continue;
+      seen[n] = true;
+      out.push({ name: n, value: v });
+    }
+    if (out.length) return out;
+    var parts = (window.location.hash || '').split('?')[0].replace(/^#\/?/, '').split('/').filter(Boolean);
+    for (var j = 1; j < parts.length; j++) {
+      if (/^[a-f0-9]{24}$/i.test(parts[j]) && !/^[a-f0-9]{24}$/i.test(parts[j - 1])) {
+        var name = parts[j - 1] + '_id';
+        if (!seen[name]) { seen[name] = true; out.push({ name: name, value: parts[j] }); }
+      }
+    }
+    return out;
+  };
+
+  /**
+   * SCW.viewRecordsUrl(viewId[, scene]) → the address Knack itself reads a grid's records from
+   * (the grid model's url, else the scenes path), with `format=both`, no page / rows_per_page
+   * (append your own), and the page's crumbs. '' when the view is not on the page.
+   */
+  namespace.viewRecordsUrl = function (viewId, scene) {
+    if (typeof Knack === 'undefined' || !Knack.views) return '';
+    var view = Knack.views[viewId];
+    if (!view) return '';
+    scene = scene || namespace.sceneOfView(viewId) || (Knack.router && Knack.router.current_scene_key) || '';
+    var base = '';
+    try {
+      var mu = view.model && (typeof view.model.url === 'function' ? view.model.url.call(view.model) : view.model.url);
+      if (mu) base = String(mu);
+    } catch (e) { /* hand-built below */ }
+    if (!base) {
+      if (!Knack.api_url || !scene) return '';
+      base = Knack.api_url + '/v1/scenes/' + scene + '/views/' + viewId + '/records?format=both';
+    }
+    base = base.replace(/([?&])(rows_per_page|page)=[^&]*/g, '$1').replace(/[?&]+$/, '').replace(/([?&])&+/g, '$1');
+    if (!/[?&]format=/.test(base)) base += (base.indexOf('?') === -1 ? '?' : '&') + 'format=both';
+    var crumbs = namespace.sceneCrumbs(scene);
+    for (var c = 0; c < crumbs.length; c++) {
+      if (base.indexOf(crumbs[c].name + '=') !== -1) continue;   // Knack already carries it
+      base += '&' + encodeURIComponent(crumbs[c].name) + '=' + encodeURIComponent(crumbs[c].value);
+    }
+    return base;
+  };
+
+  /**
    * SCW.knackImgThumb(url[, style]) — thumbnail URL for a Knack-hosted image.
    *
    * Rendering /original/ S3 assets (multi-MB camera photos) as thumbnails is

@@ -727,19 +727,75 @@
     }
     return null;
   }
-  /** One view-based GET of the keeper → Promise<record | null>. */
-  function readKeeper(gridKey, keeperId) {
+  /** One view-based GET of the keeper → Promise<record | null>. The FALLBACK read: a one-record
+   *  read through a site grid carries no page crumb, and the grid is filtered through the page's
+   *  record (project → site), so on the live app it found nothing (2026-11-17: "I don't seem to be
+   *  getting any real progress updates — it sits at 0% right up until the end"). */
+  function readKeeperOne(gridKey, keeperId) {
     return new Promise(function (resolve) {
       try {
         if (typeof SCW.knackAjax !== 'function' || typeof SCW.knackRecordUrl !== 'function') { resolve(null); return; }
         SCW.knackAjax({
           url: SCW.knackRecordUrl(gridKey, keeperId),
           type: 'GET',
+          cache: false,
           success: function (resp) { resolve((resp && resp.record) || resp || null); },
           error: function () { resolve(null); }
         });
       } catch (e) { resolve(null); }
     });
+  }
+  /** The site grid's records read the way Knack reads them — the grid's own address plus the
+   *  page's parent-record crumbs (SCW.viewRecordsUrl) — WITHOUT re-rendering the grid.
+   *  → Promise<{ records: array|null, status, url }>. */
+  function readGridList(gridKey) {
+    return new Promise(function (resolve) {
+      try {
+        if (typeof SCW.knackAjax !== 'function' || typeof SCW.viewRecordsUrl !== 'function') {
+          resolve({ records: null, status: 'no helper', url: '' }); return;
+        }
+        var url = SCW.viewRecordsUrl(gridKey);
+        if (!url) { resolve({ records: null, status: 'grid not on the page', url: '' }); return; }
+        url += '&rows_per_page=1000&page=1';
+        SCW.knackAjax({
+          url: url,
+          type: 'GET',
+          cache: false,
+          success: function (resp) {
+            var recs = resp && Array.isArray(resp.records) ? resp.records : null;
+            resolve({ records: recs, status: recs ? 200 : 'no records in the reply', url: url });
+          },
+          error: function (xhr) { resolve({ records: null, status: 'HTTP ' + ((xhr && xhr.status) || 0), url: url }); }
+        });
+      } catch (e) { resolve({ records: null, status: 'error', url: '' }); }
+    });
+  }
+  /** → Promise<{ keeper, records, how }>: the keeper off the grid list (it also tells which losers
+   *  are merged), else the one-record read. */
+  function readKeeper(gridKey, keeperId) {
+    return readGridList(gridKey).then(function (res) {
+      if (res.records) {
+        var keeper = null;
+        for (var i = 0; i < res.records.length; i++) if (res.records[i] && res.records[i].id === keeperId) keeper = res.records[i];
+        return { keeper: keeper, records: res.records, how: 'list', status: res.status, url: res.url };
+      }
+      return readKeeperOne(gridKey, keeperId).then(function (rec) {
+        return { keeper: rec, records: null, how: 'one', status: res.status, url: res.url };
+      });
+    });
+  }
+  /** Losers merged per a records list (gone from it, or FLAG_lifecycle merged). */
+  function lostIn(records, loserIds) {
+    var byId = {};
+    for (var i = 0; i < records.length; i++) if (records[i] && records[i].id) byId[records[i].id] = records[i];
+    var F = CONFIG.fields;
+    return loserIds.filter(function (id) {
+      var r = byId[id];
+      if (!r) return true;
+      var lc = r[F.lifecycle + '_raw'] != null && r[F.lifecycle + '_raw'] !== '' ? r[F.lifecycle + '_raw'] : r[F.lifecycle];
+      if (Array.isArray(lc)) lc = lc.join(' ');
+      return text(lc).toLowerCase() === 'merged';
+    }).length;
   }
 
   /** Does the grid's model carry this field? (A view-based read only returns its columns.) */
@@ -785,6 +841,21 @@
     var note = body.querySelector('.' + P + '-note');
     var closeBtn = foot.querySelector('[data-act="close"]');
     var lastSig = '', lastChange = Date.now(), ticks = 0, finished = false, stalled = false, best = 0, sawProgress = false;
+    var listWorks = false, lastLog = '';
+    /** One console line whenever what the reads find changes — the first thing to look at when
+     *  the bar does not move. */
+    function logRead(read, pr) {
+      var key = (read.how || '') + '|' + (read.keeper ? 'k' : '-') + '|' + (pr ? 'p' : '-');
+      if (key === lastLog) return;
+      lastLog = key;
+      try {
+        console.info('[scw-mdf-merge] run ' + run.runId + ': ' + (read.how === 'list'
+          ? 'read ' + read.records.length + ' MDF/IDFs off ' + run.gridKey + ', keeper ' + (read.keeper ? 'found' : 'NOT in the list')
+          : 'the list read failed (' + read.status + (read.url ? ' — ' + read.url : '') + '), one-record read: keeper ' +
+            (read.keeper ? 'found' : 'not found')) +
+          ', progress ' + (pr ? 'step ' + pr.step + ' (' + pr.text + ')' : 'none yet'));
+      } catch (e) { /* no console */ }
+    }
     // Without progress, completion shows only on a grid that drops merged closets or serves
     // FLAG_lifecycle; a grid that does neither can never confirm it (say so, don't spin).
     var gridCanTell = servesField(run.gridKey, CONFIG.fields.lifecycle);
@@ -847,15 +918,19 @@
       ticks++;
       // The grid is the fallback signal only: once Make's progress is readable it is not refetched
       // until the end (one fetch confirms the merged closets are gone).
-      var checkGrid = !sawProgress && ticks % CONFIG.gridCheckEvery === 0;
+      // A working list read tells the merged losers too, so the grid is never re-rendered then.
+      var checkGrid = !sawProgress && !listWorks && ticks % CONFIG.gridCheckEvery === 0;
       Promise.all([
         readKeeper(run.gridKey, run.keeperId),
         checkGrid ? Promise.resolve(refetchGrid(run.gridKey)).then(function () { return lost(); }, function () { return lost(); })
                   : Promise.resolve(null)
       ]).then(function (res) {
         if (finished || !ov.isConnected) return;
-        var pr = progressOf(res[0], run.runId);
-        var merged = res[1];
+        var read = res[0] || {};
+        if (read.how === 'list') listWorks = true;
+        var pr = progressOf(read.keeper, run.runId);
+        var merged = read.records ? lostIn(read.records, run.loserIds) : res[1];
+        logRead(read, pr);
         if (pr) sawProgress = true;
         var sig = (pr ? [pr.loser, pr.step, pr.i].join('.') : '') + '/' + (merged == null ? '' : merged);
         if (sig !== lastSig) { lastSig = sig; lastChange = Date.now(); }

@@ -70,7 +70,20 @@ global.fetch = window.fetch;
 let keeperProgress = '';
 const ajaxCalls = [];
 window.SCW.knackRecordUrl = (v, id) => 'url:' + v + '/' + id;
-window.SCW.knackAjax = (o) => { ajaxCalls.push(o); o.success({ record: { id: 'i1', field_1641: 'IDF', field_9999: keeperProgress } }); };
+// The grid read with the page's crumb (util.js SCW.viewRecordsUrl): the site grid's records, the keeper
+// carrying Make's progress. listFails = the list read errors and the window falls back to the one-record read.
+let listFails = false;
+window.SCW.viewRecordsUrl = (v) => 'list:' + v + '?format=both&build-sow_id=' + PID;
+window.SCW.knackAjax = (o) => {
+  ajaxCalls.push(o);
+  if (/^list:/.test(o.url)) {
+    if (listFails) { o.error({ status: 404 }); return; }
+    o.success({ records: gridModels.map((g) => Object.assign({}, g.attributes,
+      g.attributes.id === 'i1' ? { field_9999: keeperProgress } : {})) });
+    return;
+  }
+  o.success({ record: { id: 'i1', field_1641: 'IDF', field_9999: keeperProgress } });
+};
 global.Knack = window.Knack; global.SCW = window.SCW;
 
 function load(f) {
@@ -184,7 +197,9 @@ const $$ = (s) => Array.from(document.querySelectorAll(s));
 
   keeperProgress = RUN + '|1|1|1|37|200|Moving SOW line items';
   nextPoll().fn(); await flush(); await flush(); await flush();
-  ok(ajaxCalls[0] && ajaxCalls[0].url === 'url:view_4166/i1' && ajaxCalls[0].type === 'GET', 'it reads the keeper through the site grid');
+  ok(ajaxCalls[0] && ajaxCalls[0].url === 'list:view_4166?format=both&build-sow_id=' + PID + '&rows_per_page=1000&page=1' &&
+     ajaxCalls[0].type === 'GET' && ajaxCalls[0].cache === false,
+    "it reads the keeper off the site grid's list, with the page's crumb (a one-record read without it found nothing live)");
   ok(!$('.scw-mst-bar').classList.contains('is-waiting'), 'a readable progress turns the bar determinate');
   const w1 = parseFloat($('.scw-mst-bar__fill').style.width);
   ok(w1 > 0 && w1 < 10, 'step 1, 37 of 200 -> a few percent (' + w1 + '%)');
@@ -316,6 +331,30 @@ const $$ = (s) => Array.from(document.querySelectorAll(s));
   closeBtn().click();
   gridModels.forEach((g, i) => { g.attributes.field_2845 = saved[i]; });
   T.CONFIG.stallMs = 90000;
+  timers.length = 0;
+
+  // ── the list read fails: the one-record read still drives the bar ──
+  timers.length = 0; posts = []; ajaxCalls.length = 0;
+  reply = { status: 200, body: '{"ok": true, "started": true}' };
+  gridModels[2].attributes.field_2845 = 'approved';
+  listFails = true;
+  const infos = []; const realInfo = console.info; console.info = (m) => infos.push(String(m));
+  T.openMerge({ viewKey: 'view_3962', gridKey: 'view_4166', keeperId: 'i1', keeperLabel: 'IDF: 01: Warehouse' });
+  pick();
+  await flush(); await flush();
+  const RUN3 = posts[0].body.runId;
+  keeperProgress = RUN3 + '|1|1|3|2|4|Moving install line items';
+  const f3 = timers.findIndex((t) => t.ms === 800);
+  timers.splice(f3, 1)[0].fn(); await flush(); await flush(); await flush(); await flush();
+  ok(ajaxCalls.some((c) => c.url === 'url:view_4166/i1'), 'a failed list read falls back to the one-record read');
+  ok(/Moving install line items · 2 of 4/.test($('.scw-mst-pstatus').textContent), '… which still drives the bar');
+  ok(infos.some((l) => /the list read failed \(HTTP 404/.test(l) && /progress step 3/.test(l)),
+    'one console line says which read worked and what it found');
+  console.info = realInfo;
+  keeperProgress = RUN3 + '|1|1|8|1|1|Done';
+  nextPoll().fn(); await flush(); await flush(); await flush(); await flush();
+  closeBtn().click();
+  listFails = false;
   timers.length = 0;
 
   // parse + share helpers
