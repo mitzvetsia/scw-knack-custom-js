@@ -1041,11 +1041,19 @@ without a site and the ops team assigns a site when the project comes across"; n
 link): on a `no-site` reply outside survey mode it follows the page's native Knack add form when one is still there
 ("… the standard add form opened instead") and otherwise says the project has no Site yet. **So the native "Add
 MDF/IDF" pages + menus must STAY (view_3436 / view_3441 Build SOW, view_3654 / view_3656 sales, view_4136 /
-view_4137 sub deployment) until 22.02 creates on a project with no site.** Design direction proposed, not decided:
-closets are project-scoped until the project has a site; when Ops assigns the site the project's closets take it and
-Ops reconciles against the site's existing ones (the merge tool); optionally sales may PICK (never create) one of the
-company's known sites early. Data: 85 of the 287 sited projects created since 2026-07-20 (30%) landed at a site that
-already had a project (21% all-time), so 70% have nothing to see at SOW time. Tests: the no-site blocks in
+view_4137 sub deployment) until 22.02 creates on a project with no site.** **REJECTED the same day: "closets are
+project-scoped until Ops assigns the site"** — "no... sales needs to see existant MDF/IDFS when they're bilding the
+SOW. Honestly they also ned to see deployment and future as built records in that MDF/IDF too". So the site has to
+be known WHILE the SOW is built; do not propose late assignment again. Proposed in reply, NOT decided or built: sales
+PICKS (never creates) one of the customer's existing sites at the start of the SOW, or says "new location" (Ops
+creates that site as today; a new location has nothing to see). Facts behind it (schema + 2026-11-17 exports): the
+SOW (`object_106`) links only to the project (`field_2119`), so the sales SOW page cannot host a site grid (SOW →
+project → site is two hops) without a site connection on the SOW itself; INSTALL_line items carry the closet
+`field_2818` and the site `field_2847`; the legacy As-Built objects (object_75–79) point at the Site and at the LEGACY
+closet object_75, never at OPS_MDF-IDF; Sales Portal → Company Details (scene_1115) already lists the company's
+sites (view_3416). 85 of the 287 sited projects created since 2026-07-20 (30%) landed at a site that already had a
+project, and in 84 of those 85 the earlier project there was for the SAME company; 2,382 of 2,816 companies have one
+site, 374 have 2–5, 60 have more (max 96). Tests: the no-site blocks in
 `tests/misc/test-mdf-project-add.js` and `tests/bid-review-v2/test-add-mdf-button.js`.
 
 **Closet survey notes are a stamped, append-only log (built 2026-11-02)** — `mdf-edit-core.js`
