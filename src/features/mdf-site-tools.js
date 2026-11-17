@@ -51,6 +51,15 @@
     progressPollMs: 2000,     // the merge window reads the keeper's progress this often
     gridCheckEvery: 3,        // … and re-reads the site grid every Nth poll (losers merged / gone)
     stallMs: 90000,           // no progress for this long → say so, allow Close
+    // Between Make's real updates the bar eases forward on its own ("can we fake the intermediary
+    // points for the user's experience?", 2026-11-17): Make reports the first record of a step,
+    // every 10th and the last, and the closing steps land together, so the true readings are a
+    // jump at the start and a jump at the end. Every creepEveryMs the bar closes part of the gap
+    // to creepCap (≈63% of it per creepTauMs per MDF/IDF merged) — it never reaches the end until
+    // Make says done, and it stops while Make has been silent for stallMs. 0 = off.
+    creepEveryMs: 500,
+    creepTauMs: 25000,
+    creepCap: 0.92,
     progressField: '',        // OPS_MDF-IDF "SYS_merge progress"; '' = find it by the run id in the record
     stepsPerLoser: 7,
     createRefreshMs: [1500, 6000],
@@ -730,6 +739,14 @@
     var done = (pr.loser - 1) * steps + (Math.max(1, pr.step) - 1) + within;
     return Math.max(0.02, Math.min(1, done / (pr.losers * steps)));
   }
+  /** Where the bar stands dtMs later when nothing new came from Make: part of the gap to the cap
+   *  closed, slower the closer it gets. A share already past the cap is left alone. */
+  function creepNext(share, dtMs, losers) {
+    var cap = CONFIG.creepCap;
+    if (!(share < cap) || !(dtMs > 0)) return share;
+    var tau = CONFIG.creepTauMs * Math.max(1, losers || 1);
+    return share + (cap - share) * (1 - Math.exp(-dtMs / tau));
+  }
   /** Done = 22.03 v2's closing marker (step 8, written once every loser is finished), or the
    *  last loser's "marked merged" step (an older 22.03 that writes no closing marker). */
   function progressDone(pr, steps) {
@@ -886,12 +903,27 @@
     function setShare(x, determinate) {
       best = Math.max(best, x);
       bar.classList.toggle('is-waiting', !determinate);
-      fill.style.width = Math.round(best * 100) + '%';
+      fill.style.width = (Math.round(best * 1000) / 10) + '%';
       bar.setAttribute('aria-valuenow', String(Math.round(best * 100)));
+    }
+    // The eased crawl between Make's real readings (CONFIG.creep*). Starts once Make is known to
+    // be running; the status line and the counts under it stay Make's own words.
+    var creepTimer = null, creepAt = 0;
+    function startCreep() {
+      if (creepTimer || !(CONFIG.creepEveryMs > 0)) return;
+      creepAt = Date.now();
+      creepTimer = setInterval(function () {
+        if (!ov.isConnected || bar.classList.contains('is-done')) { clearInterval(creepTimer); return; }
+        var now = Date.now();
+        // Make silent for stallMs: the note says so, and the bar stops pretending.
+        if (now - lastChange <= CONFIG.stallMs) setShare(creepNext(best, now - creepAt, n), true);
+        creepAt = now;
+      }, CONFIG.creepEveryMs);
     }
     if (run.started) {
       statusEl.textContent = 'Make has started.';
       setShare(0.02, true);
+      startCreep();
     } else {
       statusEl.textContent = 'Sent to Make. Waiting for it to start…';
     }
@@ -909,6 +941,7 @@
       ov._busy = false;
       if (ok) {
         clearInterval(clockTimer);
+        if (creepTimer) clearInterval(creepTimer);
         setShare(1, true);
         bar.classList.add('is-done');
         statusEl.textContent = msg;
@@ -925,6 +958,7 @@
       var wasStalled = stalled && !finished;
       finished = true;
       clearInterval(clockTimer);
+      if (creepTimer) clearInterval(creepTimer);
       window.removeEventListener('beforeunload', leaveGuard);
       closeModal();
       if (wasStalled) watchMerge(run.gridKey, run.viewKey, run.loserIds, run.keeperLabel);
@@ -957,6 +991,7 @@
         if (pr) sawProgress = true;
         var sig = (pr ? [pr.loser, pr.step, pr.i].join('.') : '') + '/' + (merged == null ? '' : merged);
         if (sig !== lastSig) { lastSig = sig; lastChange = Date.now(); }
+        if (pr || merged) startCreep();
         if (pr) {
           setShare(progressShare(pr, steps), true);
           statusEl.textContent = pr.step === 0 ? 'Make has started.'
@@ -1040,6 +1075,7 @@
     projectId: projectId,
     _watchMerge: watchMerge,
     _parseProgress: parseProgress,
+    _creepNext: creepNext,
     _progressShare: progressShare
   };
 })();

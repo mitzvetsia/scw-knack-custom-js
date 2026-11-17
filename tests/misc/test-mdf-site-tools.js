@@ -93,6 +93,10 @@ function load(f) {
 load('../../src/features/mdf-site-route.js');
 load('../../src/features/mdf-site-tools.js');
 const T = window.SCW.mdfSiteTools;
+// The eased crawl between Make's readings runs on a real interval; off here so the widths the
+// blocks below assert are Make's own. Its own block (near the end) turns it on with a captured timer.
+const CREEP_MS = T.CONFIG.creepEveryMs;
+T.CONFIG.creepEveryMs = 0;
 
 let fails = 0, n = 0;
 function ok(cond, msg) { n++; if (cond) console.log('ok - ' + msg); else { fails++; console.log('FAIL - ' + msg); } }
@@ -365,6 +369,51 @@ const $$ = (s) => Array.from(document.querySelectorAll(s));
   nextPoll().fn(); await flush(); await flush(); await flush(); await flush();
   closeBtn().click();
   listFails = false;
+  timers.length = 0;
+
+  // ── the bar eases forward between Make's real readings (2026-11-17) ──
+  ok(CREEP_MS > 0, 'the crawl is on by default');
+  T.CONFIG.creepEveryMs = CREEP_MS;
+  const c1 = T._creepNext(0.02, T.CONFIG.creepTauMs, 1);
+  ok(c1 > 0.55 && c1 < 0.62, 'one tau closes ~63% of the gap to the cap (2% -> ' + Math.round(c1 * 100) + '%)');
+  ok(T._creepNext(0.02, T.CONFIG.creepTauMs, 3) < c1, 'more MDF/IDFs to merge = a slower crawl');
+  ok(T._creepNext(0.5, 10 * 60 * 1000, 1) <= T.CONFIG.creepCap + 1e-9, 'it never passes the cap, however long Make takes');
+  ok(T._creepNext(0.97, 5000, 1) === 0.97, 'a real reading past the cap is left alone');
+  const intervals = []; const realSetInterval = global.setInterval; const realClearInterval = global.clearInterval;
+  const cleared = [];
+  global.setInterval = (fn, ms) => { intervals.push({ fn, ms }); return { fake: intervals.length }; };
+  global.clearInterval = (h) => { cleared.push(h); if (!(h && h.fake)) realClearInterval(h); };
+  const realNow = Date.now; let clockNow = realNow();
+  Date.now = () => clockNow;
+  timers.length = 0; posts = []; ajaxCalls.length = 0; keeperProgress = '';
+  gridModels[2].attributes.field_2845 = 'approved';
+  reply = { status: 200, body: '{"ok": true, "started": true}' };
+  T.openMerge({ viewKey: 'view_3962', gridKey: 'view_4166', keeperId: 'i1', keeperLabel: 'IDF: 01: Warehouse' });
+  pick();
+  await flush(); await flush();
+  const creep = intervals.find((t) => t.ms === CREEP_MS);
+  ok(!!creep, 'a started merge starts the crawl');
+  const width = () => parseFloat($('.scw-mst-bar__fill').style.width);
+  const wA = width();
+  clockNow += 5000; creep.fn();
+  const wB = width();
+  ok(wB > wA && wB < 30, 'with nothing new from Make the bar still moves (' + wA + '% -> ' + wB + '% after 5 s)');
+  ok(/Make has started/.test($('.scw-mst-pstatus').textContent), '… while the status line stays what Make last said');
+  clockNow += 10 * 60 * 1000; creep.fn();
+  ok(width() === wB, 'Make silent past the stall time: the bar stops moving');
+  const RUN4 = posts[0].body.runId;
+  keeperProgress = RUN4 + '|1|1|5|1|1|Moving survey requests';
+  const f4 = timers.findIndex((t) => t.ms === 800);
+  timers.splice(f4, 1)[0].fn(); await flush(); await flush(); await flush();
+  ok(width() > 70 && width() < 72, 'a real reading ahead of the crawl moves the bar to it (' + width() + '%)');
+  clockNow += 3000; creep.fn();
+  ok(width() > 71.4 && width() < T.CONFIG.creepCap * 100, '… and the crawl carries on from there');
+  keeperProgress = RUN4 + '|1|1|8|1|1|Done';
+  nextPoll().fn(); await flush(); await flush(); await flush(); await flush();
+  ok($('.scw-mst-bar__fill').style.width === '100%' && cleared.some((h) => h && h.fake), 'done fills the bar and stops the crawl');
+  closeBtn().click();
+  Date.now = realNow; global.setInterval = realSetInterval; global.clearInterval = realClearInterval;
+  T.CONFIG.creepEveryMs = 0;
   timers.length = 0;
 
   // parse + share helpers
