@@ -2128,7 +2128,7 @@ through it. Read off the schema, all three of those grids are the wrong tool:
   the "Mounting Hardware" grid on RECONCILE BIDS (same menu); view_3887, the "Mounting Brackets" grid on Scope
   of Work Details (Sales Portal → Company Details → Scope of Work Details). Each is **filtered to the Mounting
   Hardware bucket** (a surge kit, a hard drive, a WattBox under a parent are other buckets: never found),
-  **loads 25 rows** (not in change-record-limit.js; Toyota's BUILD SOW read "1-25 of 266"), and **has no SOW
+  **loads 25 rows** (`rows_per_page: 25` in the schema, not in change-record-limit.js), and **has no SOW
   column** (`field_2154`) — Knack does not apply a field a grid lacks, so even a found bracket's SOW write
   through it did not land (not confirmed live; the same rule is proven on other grids), and the accessory-SOW
   reconcile sweep, which reads the accessory's SOW off that grid, skips every row.
@@ -2163,7 +2163,9 @@ through it. Read off the schema, all three of those grids are the wrong tool:
   cameras carry their accessories (93 linked mounting lines). Its other 173 mounting lines (46 Observer sets of
   three, 33 Deputy and 2 Informant box mounts) have no parent because NO camera for them is on the SOW: a
   clone copies every line on the source SOW, so they were most likely already stranded on the source — cameras
-  taken off it, mounts left behind (the bug above, at scale). Not confirmed: the source SOW was not on hand.
+  taken off it, mounts left behind. Not confirmed, and not to be chased: **Micah, 2026-11-18: "treat Toyota
+  as an outlier."** Do not cite SOW 2136's counts as how common stranded accessories are, do not size a
+  cleanup or the sweep decision by it, and do not go looking for its source SOW or its Make run.
 - Test: blocks 5–7 of `tests/misc/test-sow-cascade-connected-devices.js` (the kit in another bucket, the
   bracket in both grids, the row-above fallback, the MDF follow).
 
