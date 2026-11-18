@@ -2150,10 +2150,20 @@ through it. Read off the schema, all three of those grids are the wrong tool:
   design, so an unlinked accessory still prints on the proposal (view_4140, "Scope Line Items" on proposal
   preview: every line connected to the SOW; a line whose parent is not on the SOW prints as its own row);
   only the trash / the stepper's minus-at-1 deletes it.
-- **Make 01.04 (clone between projects)**: its accessory pass [36] "get all SOW Line Items with Accessories" is
-  `limit: 100`, so a clone with more parents-with-accessories than that leaves the rest of the copied
-  accessories with no parent (Toyota SOW 2136 on 2026-11-17: 266 mounting lines, 93 with a parent). Not
-  patched.
+- **Make 01.04 (clone between projects) is NOT a cause — it was fixed 2026-11-16** ("01.04 … (full copy)",
+  `scratchpad/bp0104/tools/patch.py` over the user's export; never written down here, which is why the
+  2026-11-18 investigation first blamed it off the PRE-patch export in uploads — check `scratchpad/bp*/` and
+  the upload dates before calling a Make scenario unpatched): every search `limit` 100 → 10000 ([4] [21] [28]
+  [36] [45] [51] [53]; a SOW past 100 lines lost the rest), a new route [60] → [61] that sets each cloned
+  line's `field_2464` from the SOURCE line's own parent (the forward list `field_2207` was the only relink),
+  [33]'s aggregator key (Connected Devices were written empty on every clone), [22] exterior flag from
+  `field_1984` (was the hours number `field_1980`), MDF photos [15] / [16], and "found one" filters on [49] /
+  [52] / [54] / [40] / [30]. **Proof it is live**: Toyota SOW 2136 was created 2026-11-16 15:01 UTC, five
+  minutes after the blueprint was built, with 378 lines in one pass (the old cap was 100), and all 77 cloned
+  cameras carry their accessories (93 linked mounting lines). Its other 173 mounting lines (46 Observer sets of
+  three, 33 Deputy and 2 Informant box mounts) have no parent because NO camera for them is on the SOW: a
+  clone copies every line on the source SOW, so they were most likely already stranded on the source — cameras
+  taken off it, mounts left behind (the bug above, at scale). Not confirmed: the source SOW was not on hand.
 - Test: blocks 5–7 of `tests/misc/test-sow-cascade-connected-devices.js` (the kit in another bucket, the
   bracket in both grids, the row-above fallback, the MDF follow).
 
