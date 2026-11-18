@@ -729,15 +729,13 @@
    *  up accessories the parent's td.<ACCESSORIES_FIELD> cell may not
    *  list (e.g. when ACCESSORIES_FIELD isn't surfaced on this view). */
   function findAccessoryIdsFromAccessoryModel(parentId) {
-    if (!ACCESSORIES_VIEW_ID || !ACCESSORIES_PARENT_FIELD || !parentId) return [];
+    if (!ACCESSORIES_PARENT_FIELD || !parentId) return [];
     var out = [];
-    try {
-      var v = window.Knack && Knack.views && Knack.views[ACCESSORIES_VIEW_ID];
-      var models = v && v.model && ((v.model.data && v.model.data.models) || v.model.models);
-      if (!models) return out;
+    function scan(models) {
+      if (!models) return;
       for (var i = 0; i < models.length; i++) {
         var attrs = models[i] && (models[i].attributes || models[i]);
-        if (!attrs || !attrs.id) continue;
+        if (!attrs || !attrs.id || attrs.id === parentId) continue;
         var raw = attrs[ACCESSORIES_PARENT_FIELD + '_raw'];
         var match = false;
         if (Array.isArray(raw)) {
@@ -749,19 +747,53 @@
         }
         if (match && out.indexOf(attrs.id) === -1) out.push(attrs.id);
       }
+    }
+    try {
+      if (ACCESSORIES_VIEW_ID) {
+        var v = window.Knack && Knack.views && Knack.views[ACCESSORIES_VIEW_ID];
+        scan(v && v.model && ((v.model.data && v.model.data.models) || v.model.models));
+      }
     } catch (e) { /* best-effort */ }
+    // …AND this view's own model. Accessories are ordinary line items, so
+    // on the worksheet-v2 views (view_3962 / view_3921 / view_3586) every
+    // accessory is a row of the view itself, parent pointer included. The
+    // separate accessory grids were the ONLY source until 2026-11-18, and
+    // they are Builder-filtered to the Mounting Hardware bucket and load one
+    // page (25 rows): an accessory in any other bucket (a surge protection
+    // kit under an antenna), or past the first page (Toyota: 266 mounting
+    // lines), was never found — so it never followed its parent off a SOW
+    // or to a new MDF/IDF. A view that does not serve the parent field
+    // contributes nothing (every `_raw` is undefined).
+    try { scan(getModelRecords()); } catch (e2) { /* best-effort */ }
     return out;
   }
 
   /** Resolve the accessory ids attached to a given parent. Prefer the
-   *  accessory model's back-connection lookup (source of truth); fall
-   *  back to scraping the parent's td.<ACCESSORIES_FIELD> when the
-   *  back-connection field isn't configured or the accessory view's
-   *  model isn't loaded. */
+   *  models' back-connection lookup (source of truth); fall back to
+   *  scraping the parent's td.<ACCESSORIES_FIELD> when the back-connection
+   *  field isn't configured or no model is loaded — v1 DOM views only. */
   function findAccessoryIdsForParent(parentId) {
     var ids = findAccessoryIdsFromAccessoryModel(parentId);
     if (ids.length) return ids;
+    // MODEL_ONLY views have no worksheet-row triplet: getElementById lands
+    // on the record's own (hidden) native row, whose previous sibling is a
+    // DIFFERENT record — the scrape then returned THAT record's accessories
+    // and the cascade wrote this parent's SOW / MDF onto them. "No
+    // accessories in the models" means none.
+    if (MODEL_ONLY) return [];
     return findAccessoryIds(parentId);
+  }
+
+  /** The view to PUT an accessory through. An accessory that is a row of
+   *  this view's own model is written through it: the worksheet views carry
+   *  the SOW and MDF/IDF as editable columns and serve every bucket. The
+   *  accessory grids (view_3888 / view_3927 / view_3887) have NO SOW column
+   *  — Knack does not apply a field a grid lacks, so a SOW write through
+   *  them never lands — and only reach Mounting Hardware records. They stay
+   *  the route for an accessory this view does not hold. */
+  function accessoryPutView(accessoryId) {
+    if (accessoryId && getModelAttrs(accessoryId)) return VIEW_ID;
+    return ACCESSORIES_VIEW_ID;
   }
 
   /** Scrape the accessory record ids connected to a given child via
@@ -888,7 +920,8 @@
    *  bubble — at worst the user sees the accessory in the wrong
    *  group section until the next page load. */
   function fireAccessoryPut(accessoryId, mdfId, onDone) {
-    if (!ACCESSORIES_VIEW_ID || !mdfId || !accessoryId) {
+    var putView = accessoryPutView(accessoryId);
+    if (!putView || !mdfId || !accessoryId) {
       if (typeof onDone === 'function') onDone();
       return;
     }
@@ -898,10 +931,10 @@
     }
     var body = {};
     body[GROUPING_FIELD] = [mdfId];
-    log('  PUT(accessory) → ' + accessoryId + ' MDF=' + mdfId);
+    log('  PUT(accessory) → ' + accessoryId + ' MDF=' + mdfId + ' via ' + putView);
     cascadeBegin();
     knackPutKeepalive(
-      window.SCW.knackRecordUrl(ACCESSORIES_VIEW_ID, accessoryId),
+      window.SCW.knackRecordUrl(putView, accessoryId),
       body,
       function (err) {
         cascadeEnd();
@@ -2054,7 +2087,8 @@
    *  and no beforeunload prompt — the write is keepalive + idempotent
    *  and re-runs on the next load if it's lost. */
   function fireAccessorySowPut(accessoryId, sowIds, onDone, silent) {
-    if (!ACCESSORIES_VIEW_ID || !accessoryId) {
+    var putView = accessoryPutView(accessoryId);
+    if (!putView || !accessoryId) {
       if (typeof onDone === 'function') onDone();
       return;
     }
@@ -2065,10 +2099,10 @@
     var body = {};
     body[SOW_FIELD] = sowIds || [];
     log('  PUT(accessory SOW) → ' + accessoryId + ' SOW=' + JSON.stringify(sowIds) +
-        (silent ? ' [silent sweep repair]' : ''));
+        ' via ' + putView + (silent ? ' [silent sweep repair]' : ''));
     cascadeBegin(silent);
     knackPutKeepalive(
-      window.SCW.knackRecordUrl(ACCESSORIES_VIEW_ID, accessoryId),
+      window.SCW.knackRecordUrl(putView, accessoryId),
       body,
       function (err) {
         cascadeEnd(silent);
@@ -2110,9 +2144,19 @@
         // 1) Accessories — ALWAYS exact-match the parent's SOW set, an empty
         //    set included ("an accessory's SOW mirrors its parent's exact
         //    set"; leaving them behind is the orphaned-accessory bug).
+        //    Found by their own parent pointer in this view's model and the
+        //    accessory grid's (any bucket, every row), written through the
+        //    view that can take the SOW (accessoryPutView). A landed write is
+        //    mirrored onto the local models, so the worksheet's next rebuild
+        //    does not show the accessory stranded on the SOW its parent left
+        //    while the refetch is still on its way.
         var accIds = findAccessoryIdsForParent(record.id);
         for (var a = 0; a < accIds.length; a++) {
-          fireAccessorySowPut(accIds[a], parentSowIds);
+          (function (accId) {
+            fireAccessorySowPut(accId, parentSowIds, function (err) {
+              if (!err) patchLocalAccessorySow(accId, record);
+            });
+          })(accIds[a]);
         }
 
         // 2) Connected devices — NEVER moved. A camera's SOW membership is

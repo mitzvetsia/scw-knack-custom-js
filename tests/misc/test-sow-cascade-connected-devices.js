@@ -106,6 +106,66 @@ const idsIn = raw => (raw || []).map(r => r.id);
   check('move: the camera is disconnected, not dragged along; the parent\'s list empties',
     [putsFor(C1), putsFor(N1), idsIn(fx.c1.field_2154_raw), sowWrites().length], [[{ field_2197: [] }], [{ field_1957: [] }], [A], 0]);
 
+  // 5. ACCESSORIES the accessory grid does not hold (2026-11-18, Cavco: a surge protection kit stayed on
+  //    the SOW its Ubiquiti antenna had left). view_3888 is Builder-filtered to the Mounting Hardware
+  //    bucket, loads 25 rows and has no SOW column; every accessory is also a row of the worksheet's own
+  //    grid, which carries the parent pointer and takes the SOW write.
+  puts.length = 0;
+  const ANT = H('0cc01'), KIT = H('0cc02'), BRK = H('0cc03'), SW = H('0cc04'), SWB = H('0cc05'), IDF4 = H('0dd04'), IDF5 = H('0dd05');
+  const mdfRef = id => [{ id, identifier: id === IDF4 ? 'IDF 04' : 'IDF 05' }];
+  function fixture2() {
+    const ant = { id: ANT, field_1950: 'ANT-001', field_2154: '1105', field_2154_raw: sowRef([A]), field_1957_raw: [], field_2197_raw: [], field_2464_raw: [], field_1946_raw: mdfRef(IDF4) };
+    // a surge kit in the Other Equipment bucket: a row of view_3962 only
+    const kit = { id: KIT, field_1950: 'Surge Protection Kit', field_2154: '1105', field_2154_raw: sowRef([A]), field_2464_raw: ref([ANT]), field_1957_raw: [], field_2197_raw: [], field_1946_raw: mdfRef(IDF4) };
+    // a bracket that is in BOTH grids (on view_3888's first page)
+    const brk = { id: BRK, field_1950: 'Pole mount', field_2154: '1105', field_2154_raw: sowRef([A]), field_2464_raw: ref([ANT]), field_1957_raw: [], field_2197_raw: [], field_1946_raw: mdfRef(IDF4) };
+    // the neighbour: a switch with NO accessory in any model, and the record above it in the hidden grid
+    const sw  = { id: SW, field_1950: 'SW-001', field_2154: '1105', field_2154_raw: sowRef([A]), field_1957_raw: [], field_2197_raw: [], field_2464_raw: [], field_1946_raw: mdfRef(IDF4) };
+    window.Knack.views.view_3962 = models([ant, kit, brk, sw]);
+    window.Knack.views.view_3888 = models([{ id: BRK, field_1958: 'Pole mount', field_2464_raw: ref([ANT]), field_1946_raw: mdfRef(IDF4) }]);   // no SOW column
+    // the hidden native grid: the antenna's row sits right ABOVE the switch's, its accessory-list cell
+    // carrying the antenna's accessories (plus one id no model knows, to prove the scrape is not read)
+    document.body.innerHTML = '<div id="view_3962"><table><tbody>' +
+      '<tr id="' + ANT + '"><td class="field_1958"><span id="' + KIT + '" data-kn="connection-value">Surge Protection Kit</span>' +
+        '<span id="' + SWB + '" data-kn="connection-value">Stray</span></td></tr>' +
+      '<tr id="' + SW + '"><td class="field_1958"></td></tr></tbody></table></div>';
+    return { ant, kit, brk, sw };
+  }
+  const mdfPrime = () => (handlers['knack-view-render.view_3962.scwSilentRegroup-mdfprime'] || []).forEach(fn => fn());
+  const mdfEdit = rec => (handlers['knack-cell-update.view_3962.scwSilentRegroup-mdf'] || []).forEach(fn => fn(null, { key: 'view_3962' }, rec, 'field_1946'));
+  const putsVia = id => puts.filter(p => p.id === id).map(p => p.view + ' ' + JSON.stringify(p.body));
+  let f2 = fixture2(); prime(); mdfPrime();
+  sowEdit(setSow(f2.ant, []));
+  await sleep(60);
+  check('the antenna leaves its SOW: the surge kit (another bucket, a row of the worksheet grid only) follows, written through the worksheet grid',
+    putsVia(KIT), ['view_3962 {"field_2154":[]}']);
+  check('a bracket in both grids is written ONCE, through the grid that has the SOW column (never the SOW-less accessory grid)',
+    putsVia(BRK), ['view_3962 {"field_2154":[]}']);
+  check('the local model follows at once, so the next rebuild does not show the kit stranded on the SOW',
+    [idsIn(f2.kit.field_2154_raw), idsIn(f2.brk.field_2154_raw)], [[], []]);
+
+  // 6. a record with NO accessories never touches the row above it. The old fallback scraped the
+  //    accessory list of the previous row in the hidden grid and wrote this record's SOW onto it.
+  puts.length = 0;
+  f2 = fixture2(); prime(); mdfPrime();
+  sowEdit(setSow(f2.sw, [A, B]));
+  await sleep(60);
+  check('a switch with no accessories gains a SOW: nothing is written to the antenna\'s accessories in the row above',
+    [putsVia(KIT), putsVia(BRK), putsVia(SWB), puts.length], [[], [], [], 0]);
+
+  // 7. the MDF/IDF follow uses the same lookup and route
+  puts.length = 0;
+  f2.ant.field_1946_raw = mdfRef(IDF5);
+  mdfEdit(Object.assign({}, f2.ant));
+  await sleep(60);
+  check('the antenna moves to another MDF/IDF: the surge kit and the bracket move with it, through the worksheet grid',
+    [putsVia(KIT), putsVia(BRK)], [['view_3962 {"field_1946":["' + IDF5 + '"]}'], ['view_3962 {"field_1946":["' + IDF5 + '"]}']]);
+  puts.length = 0;
+  f2.sw.field_1946_raw = mdfRef(IDF5);
+  mdfEdit(Object.assign({}, f2.sw));
+  await sleep(60);
+  check('the switch moves: the row above keeps its accessories where they are', puts.length, 0);
+
   console.log(fails ? 'RESULT: FAIL (' + fails + ')' : 'RESULT: PASS');
   process.exit(fails ? 1 : 0);
 })().catch(e => { console.log('FAIL harness threw: ' + (e && e.stack || e)); process.exit(1); });

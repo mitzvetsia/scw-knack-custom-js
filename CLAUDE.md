@@ -2118,6 +2118,45 @@ cameras vanished from SOW A. (A parent cleared to [] already left devices alone.
 - Tests: `tests/misc/test-sow-cascade-connected-devices.js` (the real module's view_3962 instance:
   removal, clear, add, move), `tests/bid-review-v2/test-sow-drop-audit.js`.
 
+## Accessories follow their parent whatever their bucket (2026-11-18) — `mirror-connection-sync.js`
+
+Lee: "we are still finding orphaned accessories that were not removed with the parent … an orphaned surge
+protection kit at IDF-4 … on a Ubiquity antenna parent removed from the SoW" (Cavco). The cascade that carries
+a parent's SOW (and MDF/IDF) onto its accessories looked them up ONLY in the scene's accessory grid, and wrote
+through it. Read off the schema, all three of those grids are the wrong tool:
+- view_3888, the "Mounting Hardware" grid on BUILD SOW (Projects → Project Dashboard → BUILD SOW); view_3927,
+  the "Mounting Hardware" grid on RECONCILE BIDS (same menu); view_3887, the "Mounting Brackets" grid on Scope
+  of Work Details (Sales Portal → Company Details → Scope of Work Details). Each is **filtered to the Mounting
+  Hardware bucket** (a surge kit, a hard drive, a WattBox under a parent are other buckets: never found),
+  **loads 25 rows** (not in change-record-limit.js; Toyota's BUILD SOW read "1-25 of 266"), and **has no SOW
+  column** (`field_2154`) — Knack does not apply a field a grid lacks, so even a found bracket's SOW write
+  through it did not land (not confirmed live; the same rule is proven on other grids), and the accessory-SOW
+  reconcile sweep, which reads the accessory's SOW off that grid, skips every row.
+- When the lookup found nothing, the fallback scraped `td.field_1958` of the row ABOVE the record in the hidden
+  native grid (a v1 worksheet-row idiom; on a MODEL_ONLY view the previous sibling is another record) and wrote
+  the edited record's SOW / MDF onto THAT record's accessories.
+- Now: `findAccessoryIdsFromAccessoryModel` also scans the instance's OWN model (every accessory is a row of
+  view_3962 / view_3921 / view_3586, parent pointer `field_2464` included — any bucket, every row);
+  `findAccessoryIdsForParent` never falls back to the DOM on a MODEL_ONLY view; `accessoryPutView(id)` writes
+  an accessory through the worksheet view when it is a row of it (SOW and MDF/IDF are editable columns there),
+  else through the accessory grid; a landed SOW write is mirrored onto the local models
+  (`patchLocalAccessorySow`). The bulk SOW edit (`bulk.js propagateToAccessories`) and the card / bulk DELETE
+  (init.js kebab, bulk.js) already read the worksheet's own records and were not affected.
+- **Not changed**: the sweep still reads the accessory grids, so it stays inert on BUILD SOW / RECONCILE BIDS —
+  accessories stranded before this build, or by a server-side removal (Make 06.02's REMOVE skips mounting
+  hardware and Require Sub Bid = No lines), are not healed on load. Turning it on (pointing it at the
+  worksheet's own rows) writes to every drifted accessory on page load, incl. change-order membership on
+  parents that are on a CO — a decision, not made. The chip's **unlink** keeps the line item and its SOW by
+  design, so an unlinked accessory still prints on the proposal (view_4140, "Scope Line Items" on proposal
+  preview: every line connected to the SOW; a line whose parent is not on the SOW prints as its own row);
+  only the trash / the stepper's minus-at-1 deletes it.
+- **Make 01.04 (clone between projects)**: its accessory pass [36] "get all SOW Line Items with Accessories" is
+  `limit: 100`, so a clone with more parents-with-accessories than that leaves the rest of the copied
+  accessories with no parent (Toyota SOW 2136 on 2026-11-17: 266 mounting lines, 93 with a parent). Not
+  patched.
+- Test: blocks 5–7 of `tests/misc/test-sow-cascade-connected-devices.js` (the kit in another bucket, the
+  bracket in both grids, the row-above fallback, the MDF follow).
+
 ## Three "it doesn't go anywhere" fixes from #install-operations-tools (2026-10-22)
 
 Thread https://securitycw.slack.com/archives/C02TSSJKKU2/p1792615081468539 (Lee, Gil). Three separate
