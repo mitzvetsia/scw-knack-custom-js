@@ -2166,6 +2166,22 @@ through it. Read off the schema, all three of those grids are the wrong tool:
   taken off it, mounts left behind. Not confirmed, and not to be chased: **Micah, 2026-11-18: "treat Toyota
   as an outlier."** Do not cite SOW 2136's counts as how common stranded accessories are, do not size a
   cleanup or the sweep decision by it, and do not go looking for its source SOW or its Make run.
+- **Make 06.02 "Sync SOW to match Bid" IS a source (read off the 2026-11-19 export; NOT patched)**: it decides
+  every SOW line on its own and never asks whether the line's parent is still on the SOW. Both removal steps
+  write `field_2154` minus this SOW on ONE record and nothing else: route 0 [34] → [36] → [35] (the page's
+  `removals` list) and route 1's sweep [109] → [110] (runs on every call — the reconcile button and the
+  sub-submit trigger of docs/sow-bid-sync.md; no page, so no bundle cascade). An accessory outlives its parent
+  three ways: (1) Mounting Hardware bucket — [110] skips it; (2) Require Sub Bid = No — [110] skips it (a
+  surge kit / hard drive SCW provides); (3) its own survey item is still on the bid (accessories ride bids
+  since 06.04 v4) — it is in the truth array, the page sends it as an update, and [54] / [78] / [83] ADD this
+  SOW back to it on every sync, so taking it off the SOW by hand does not stick while its bid line is on the
+  bid. Narrower: the accessory pass ([154] / [155]) only checks that the parent survey item HAS a SOW line,
+  not that the line is on this SOW or the parent on this bid, so [159] / [162] can add a sub-added accessory
+  under a parent the same run just removed. Not a cause: [46] / [93] / [162] all set `field_2464`. Unverified:
+  [54] writes `add(map(2.bidRecord.field_2154_raw; "id"); 15.id)` — the SOW list as view_3680 served it through
+  `field_2404`; if that is ever empty the line is left on THIS SOW only (dropped from an alternate, its
+  accessories staying there). Proposed fix, not built or decided: a last route that takes off this SOW every
+  line whose `field_2464` parent is not on it.
 - Test: blocks 5–7 of `tests/misc/test-sow-cascade-connected-devices.js` (the kit in another bucket, the
   bracket in both grids, the row-above fallback, the MDF follow).
 
