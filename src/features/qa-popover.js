@@ -438,7 +438,7 @@
       lineItemId: (tr && tr.id) || '',   // the source row IS the line item
       type:       readType(),
       status:     normalizeOption(rawStatus, STATUS_OPTIONS) || 'Pending',
-      client:     normalizeOption(rawClient, ['N/A'].concat(CLIENT_OPTIONS)) || 'N/A',
+      client:     (clientSignoffOn() && normalizeOption(rawClient, ['N/A'].concat(CLIENT_OPTIONS))) || 'N/A',
       notes:      readSpanText(F.notes)   || '',
       history:    readSpanHtml(F.history) || '',
       imgUrl:     readImgUrl(),
@@ -451,13 +451,21 @@
 
   // ── Sign-off math ───────────────────────────────────────────────
 
+  // Client sign-off is switched off app-wide by SCW.CONFIG.PHOTO_CLIENT_SIGNOFF
+  // (src/config.js). Off = the stored field_2860 value is ignored.
+  function clientSignoffOn() {
+    return !!(window.SCW && window.SCW.CONFIG && window.SCW.CONFIG.PHOTO_CLIENT_SIGNOFF);
+  }
+
   function isFullyComplete(status, client) {
     if (status !== 'Pass') return false;
+    if (!clientSignoffOn()) return true;
     if (!client || client === 'N/A') return true;
     return (client === 'Approved' || client === 'Bypassed');
   }
 
   function isClientGateActive(client) {
+    if (!clientSignoffOn()) return false;
     return client && client !== 'N/A' && client !== '';
   }
 
@@ -2202,6 +2210,7 @@
     var s = (photo.status || '').toLowerCase();
     if (s === 'fail') return 'fail';
     if (s === 'pass') {
+      if (!clientSignoffOn()) return 'done';
       var c = (photo.client || '').toLowerCase();
       if (c === '' || c === 'n/a' || c === 'approved' || c === 'bypassed') return 'done';
       return 'half-pass';
@@ -2337,7 +2346,7 @@
       type:          snapshot.type || 'Photo',
       imgUrl:        snapshot.imgUrl || '',
       status:        normalizeOption(snapshot.status, STATUS_OPTIONS) || 'Pending',
-      client:        normalizeOption(snapshot.client, ['N/A'].concat(CLIENT_OPTIONS)) || 'N/A',
+      client:        (clientSignoffOn() && normalizeOption(snapshot.client, ['N/A'].concat(CLIENT_OPTIONS))) || 'N/A',
       notes:         snapshot.notes   || '',
       history:       snapshot.history || '',
       completedBy:   snapshot.completedBy   || '',

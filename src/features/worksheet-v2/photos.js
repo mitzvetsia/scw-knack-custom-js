@@ -155,10 +155,16 @@
     var html = (wrap.innerHTML || '').trim();
     return /^(?:&nbsp;|\s)*$/.test(html) ? '' : html;   // paragraph text keeps <br>
   }
+  // Client sign-off is switched off app-wide by SCW.CONFIG.PHOTO_CLIENT_SIGNOFF
+  // (src/config.js). Off = the stored field_2860 value is ignored.
+  function clientSignoffOn() {
+    return !!(window.SCW && window.SCW.CONFIG && window.SCW.CONFIG.PHOTO_CLIENT_SIGNOFF);
+  }
+
   function applyQaFromSourceRow(rec, tr) {
     var F = QA_SOURCE_FIELDS, v;
     v = qaSourceText(tr, F.status);    if (v) { rec.qaStatus = v; rec.qaPresent = true; }
-    v = qaSourceText(tr, F.client);    if (v) rec.qaClient = v;
+    v = qaSourceText(tr, F.client);    if (v && clientSignoffOn()) rec.qaClient = v;
     v = qaSourceText(tr, F.notes);     if (v !== null) rec.qaNotes = v;
     v = qaSourceText(tr, F.by);        if (v !== null) rec.qaCompletedBy = v;
     v = qaSourceText(tr, F.date);      if (v !== null) rec.qaCompletedDate = v;
@@ -299,7 +305,7 @@
       var t = spanText(span); if (t) { rec.qaStatus = t; rec.qaPresent = true; }
     });
     if (qaCols) {
-      eachQaSpan(FK_QA_CLIENT,  function (rec, span) { var t = spanText(span); if (t) rec.qaClient = t; });
+      eachQaSpan(FK_QA_CLIENT,  function (rec, span) { var t = spanText(span); if (t && clientSignoffOn()) rec.qaClient = t; });
       eachQaSpan(FK_QA_NOTES,   function (rec, span) { rec.qaNotes = (span.textContent || '').trim(); });
       eachQaSpan(FK_QA_BY,      function (rec, span) { rec.qaCompletedBy = spanText(span); });
       eachQaSpan(FK_QA_DATE,    function (rec, span) { rec.qaCompletedDate = (span.textContent || '').trim(); });
@@ -672,6 +678,7 @@
     var s = (p.qaStatus || '').toLowerCase();
     if (s === 'fail') return 'fail';
     if (s === 'pass') {
+      if (!clientSignoffOn()) return 'done';
       var c = (p.qaClient || '').toLowerCase();
       if (c === '' || c === 'n/a' || c === 'approved' || c === 'bypassed') return 'done';
       return 'half-pass';

@@ -8,6 +8,13 @@ if (typeof window.SCW.init !== 'function') {
 }
 window.SCW.CONFIG = window.SCW.CONFIG || {
   VERSION: "dev",
+  // Client sign-off on photos (DOC_photos field_2860 QA_client sign off) is a
+  // future-state idea: clients QA-ing photos as well as SCW. OFF (2026-11-19,
+  // Lee: "What is this from the Deployment page?"): the stored value is ignored
+  // everywhere in the bundle — no "Client signoff" chips in the photo QA window,
+  // no "Client pending" chit, a photo is complete on SCW's Pass alone, and the
+  // field is never written. true = the pre-11-19 behaviour.
+  PHOTO_CLIENT_SIGNOFF: false,
   MAKE_PHOTO_MOVE_WEBHOOK: "https://hook.us1.make.com/7oetygbj2g2hu5fspgtt5kcydjojid81",
   // Fires when a user clicks an empty *required* photo card and picks a
   // file. The browser reads the file as base64 and POSTs to this hook.

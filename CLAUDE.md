@@ -659,6 +659,18 @@ Phase I top section shipped 2026-09-18 on branch `claude/sow-sync-bid-compare-au
   failed photo is open too, so the strip and the Installation tile agree); the flag decides only for an item with no
   required photos ("no required photos · no QA verdict on the item") or where the page has no photo reader. When the
   checklist lands it writes the flag, and the flag can take back its say.
+- **Client sign-off on photos is OFF (2026-11-19)** — Lee, 2026-10-15: "What is this from the Deployment page? …
+  It doesn't ask on every camera line item. Looks like only this one." It was the photo QA window's "Client
+  signoff" chips (Pending / Approved / Bypassed), shown only for a photo whose DOC_photos `field_2860` QA_client
+  sign off is not N/A — a future-state idea (clients QA-ing photos as well as SCW). One switch,
+  `SCW.CONFIG.PHOTO_CLIENT_SIGNOFF` (src/config.js, `false`): the stored value is ignored everywhere in the
+  bundle — `qa-popover.js` (`clientSignoffOn`: no chips, no read-only "Client signoff" line, `isFullyComplete`
+  = SCW's Pass alone, `field_2860` never written), `worksheet-v2/photos.js` (the strip never reads `qaClient`,
+  no "Client pending" / `is-half-pass` chit) and the v1 `device-worksheet.js` chit state. `true` restores the old
+  behaviour. The field's Knack default is N/A and nothing in the bundle ever set PENDING, so the photos that
+  carry it got it from a Make scenario or a hand edit — not found, and not needed for the switch. A photo that
+  was already Pass + client Pending now reads done but has no sign-off stamp (`field_2862` / `field_2863`)
+  until someone re-saves it. Test: `tests/worksheet-v2/test-client-signoff-off.js`.
 - **Shipments drawer (2026-10-16 → 2026-10-23)**: the Installation tile's "Shipments ›" line
   opens the OMS order mirrors (counts, per-order cards, tracking links, contents). The "Re-check
   shipments" re-pull button, its reference box and every resync hint went OFF on 2026-10-16

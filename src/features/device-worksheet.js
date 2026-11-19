@@ -2903,6 +2903,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var s = (ph.qaStatus || '').toLowerCase();
     if (s === 'fail') return 'fail';
     if (s === 'pass') {
+      // Client sign-off is off app-wide (SCW.CONFIG.PHOTO_CLIENT_SIGNOFF) → SCW's Pass is done.
+      if (!(window.SCW && window.SCW.CONFIG && window.SCW.CONFIG.PHOTO_CLIENT_SIGNOFF)) return 'done';
       var c = (ph.qaClient || '').toLowerCase();
       // No client gate OR client gate already cleared → fully signed off
       if (c === '' || c === 'n/a' || c === 'approved' || c === 'bypassed') return 'done';
