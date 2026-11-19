@@ -335,6 +335,14 @@ Build SOW, CO, deploy) and by the SOW-create scenarios. Two actions:
 - **Bundle (`mdf-site-route.js`, `mdf-site-tools.js`)**: for `previewEmails` (micah.shearer@getscw.com) the three pages
   read and write closets through the site grids; "+ Add MDF/IDF" opens the create modal (22.02); the closet panels
   carry "Merge…" (22.03). Everyone else is unchanged. Widen by emptying `previewEmails`.
+- **22.02 v4 "no-site create" (2026-11-19, stop-gap)**: sales builds the SOW before Ops gives the project its Site,
+  and the add window's create came back 422. Now a create on a project with no Site makes the MDF/IDF on the project
+  alone (no `field_2848`, ## numbered and checked on the project) and answers `siteMissing: true`; `list` and
+  `ensure-default` still answer 422. Every call for a project that HAS a Site first gives that Site to the project's
+  MDF/IDFs that have none (search by `field_1648`, update where `field_2848` is blank and the record is not merged),
+  so they join the site the first time 22.02 is called after the Site is set. Nothing fires when the Site is set:
+  a project nobody adds to again keeps them site-less until the backfill import. This does not replace "sales picks an
+  existing site or says new site", which is still the design. Module ids and the bundle side: CLAUDE.md.
 - **22.02** (hook 2870027): webhook → get project → no site → 422 · else search the site's closets (limit 1000) →
   aggregate the live ones (not merged; continue when empty) → router on `action`:
   `list` → Transform to JSON → 200 `{ ok, siteId, closets }`; `ensure-default` → the site's live HEADEND ids

@@ -148,6 +148,18 @@ const hasAddMdf = (k) => /data-scw-ws-v2-action="add-mdf"/.test(html(k));
     [nativeClicks, !overlay(), (document.querySelector('.scw-mst-toast') || {}).textContent],
     [1, true, 'This project has no Site yet, so the standard add form opened instead.']);
 
+  // 22.02 v4 (2026-11-19): a project with no Site no longer refuses — the MDF/IDF is created on the
+  // project alone and the reply says siteMissing. The rep sees a plain "added"; no native form.
+  posts = []; timers.length = 0; nativeClicks = 0;
+  reply = { status: 200, body: '{"ok": true, "created": true, "id": "newS", "number": "3", "type": "IDF", "surveyNotesSaved": false, "siteMissing": true}' };
+  ns.toolbar._handleAction('add-mdf', 'view_3586');
+  $m('[data-in="name"]').value = 'Lobby';
+  $m('[data-act="add"]').click(); await flush(); await flush();
+  check('no site, 22.02 v4: created on the project, the window closes, no native form',
+    [posts.length, posts[0] && posts[0].body.numberScope, nativeClicks, !overlay(), (document.querySelector('.scw-mst-toast') || {}).textContent],
+    [1, 'project', 0, true, 'Added IDF 03: Lobby. It is on this project now.']);
+  runTimers(); await flush(); await flush();
+
   // HEADEND: no ##
   posts = [];
   reply = { status: 200, body: '{"ok": true, "created": true, "id": "new2", "number": "", "type": "HEADEND"}' };

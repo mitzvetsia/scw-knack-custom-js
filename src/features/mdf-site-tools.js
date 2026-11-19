@@ -11,7 +11,15 @@
  * The ## is prefilled with the next free IDF number at the site and refused when taken (HEADENDs
  * never carry one). Submit = one POST to MAKE_MDF_IDF_WEBHOOK, action 'create'; Make reads the
  * project's site, re-checks the ##, creates the closet on the project ("created on") AND the site,
- * and answers { ok, id } (409 number-taken, 422 no-site).
+ * and answers { ok, id } (409 number-taken).
+ *
+ * A PROJECT WITH NO SITE YET (2026-11-19 — sales builds the SOW before Ops gives the project its
+ * Site, and the create came back 422 no-site): 22.02 v4 creates the MDF/IDF on the project alone,
+ * numbers it on the project and answers { ok, siteMissing: true }; the first 22.02 call after the
+ * project has its Site gives that Site to every MDF/IDF of the project that has none. The window
+ * says so in its toast and, on the site pages, lists the project's own MDF/IDFs beside the site's
+ * (the site grid is empty for such a project). An older 22.02 still answers 422 no-site: the
+ * window then follows the page's native add form when one is there.
  *
  * PROJECT mode (2026-11-17, every login): the sales SOW page (worksheet view_3586, closets view_3602)
  * and the sub's deployment dashboard (worksheet view_4056, closets view_4060) have no site grid. Their
@@ -492,6 +500,18 @@
       return Promise.all(ps.map(function (q) { return Promise.resolve(q).catch(function () { return null; }); }));
     }
     var site = live(closets(gridKey));
+    // Site pages: an MDF/IDF with no Site (its project had none when it was made) is on the
+    // page's own project grid and not on the site grid. List it too, so the window shows it and
+    // the ## it prefills is free on the project as well.
+    if (!onProject && opts.pageGridKey && opts.pageGridKey !== gridKey) {
+      var have = {};
+      site.forEach(function (c) { have[c.id] = true; });
+      live(closets(opts.pageGridKey)).forEach(function (c) {
+        if (have[c.id]) return;
+        c.noSite = true;
+        site.push(c);
+      });
+    }
     var ctx = survey ? surveyCtx() : null;
     var pageProj = project ? pageProject() : null;
     var pid = survey ? (ctx ? surveyProjectId(ctx.id, gridKey) : '') : project ? pageProj.id : projectId();
@@ -511,6 +531,7 @@
     }).map(function (c) {
       return '<div class="' + P + '-row"><div>' + esc(labelOf(c)) +
         (!onProject && c.projectId && c.projectId !== pid ? '<small>created on another project at this site</small>' : '') +
+        (c.noSite ? '<small>on this project · not on a site yet</small>' : '') +
         (onProject && c.lifecycle === 'proposed' ? '<small>added on a survey · SCW has not reviewed it yet</small>' : '') +
         '</div></div>';
     }).join('');
@@ -544,7 +565,7 @@
       if (v === '') { note.textContent = 'Blank takes the next free number ' + where + '.'; return true; }
       if (!/^\d+$/.test(v)) { note.textContent = 'The ## is a whole number.'; return false; }
       var taken = usedNumbers(site)[String(parseFloat(v))];
-      if (taken) { note.textContent = 'IDF ' + pad(v) + ' already exists ' + where + ' (' + labelOf(taken) + ').'; return false; }
+      if (taken) { note.textContent = 'IDF ' + pad(v) + ' already exists ' + (taken.noSite ? 'on this project' : where) + ' (' + labelOf(taken) + ').'; return false; }
       note.textContent = '';
       return true;
     }
@@ -614,9 +635,13 @@
         if (j && j.ok) {
           closeModal();
           var what = j.type === 'IDF' || type === 'IDF' ? 'IDF ' + pad(j.number || payload.number) : 'HEADEND';
+          // siteMissing: the project has no Site yet (22.02 v4), so the MDF/IDF is on the project
+          // alone; it takes the project's Site on the first 22.02 call after the Site is set.
           toast('Added ' + what + (payload.name ? ': ' + payload.name : '') + '. ' +
             (survey ? 'It is on this survey now; SCW reviews it.'
-              : project ? 'It is on this project now.' : 'It shows on every project at this site.'));
+              : project ? 'It is on this project now.'
+              : j.siteMissing === true ? 'This project has no Site yet, so it is on this project only. It joins the site once the project has one.'
+              : 'It shows on every project at this site.'));
           // An older 22.02 drops surveyNotes; the page adds the note itself then.
           var appendNote = survey && surveyEntry && j.id && j.surveyNotesSaved !== true;
           CONFIG.createRefreshMs.forEach(function (ms, i) {
@@ -640,11 +665,10 @@
             return;
           }
           if (j.error === 'no-site') {
-            // A project often has NO site yet (sales creates projects without one; Ops assigns it
-            // when the project comes across — Micah 2026-11-17), and 22.02 refuses to create on
-            // such a project. Never leave the user with no way to add: hand over to the page's
-            // native Knack add form when it is still there (opts.nativeFallback), else say what
-            // is missing. Until 22.02 creates without a site, do NOT delete the native add pages.
+            // Only a 22.02 OLDER than v4 (2026-11-19) answers this for a create: v4 creates on
+            // the project alone and answers ok + siteMissing. Until v4 is imported: never leave
+            // the user with no way to add — hand over to the page's native Knack add form when
+            // it is still there (opts.nativeFallback), else say what is missing.
             var went = false;
             try { went = typeof opts.nativeFallback === 'function' && !!opts.nativeFallback(); } catch (e2) { went = false; }
             if (went) {
@@ -654,6 +678,8 @@
             }
             fail('This project has no Site yet, so the MDF/IDF could not be added here. ' +
               'Once the project has its Site, add it again.');
+            try { console.warn('[scw-mdf-add] 22.02 answered no-site for a create — import 22.02 "no-site create v4" ' +
+              '(it creates on the project alone and answers siteMissing).'); } catch (e3) { /* no console */ }
             return;
           }
           fail((j.message || 'Make refused it (' + (j.error || r.status) + ').') +

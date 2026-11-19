@@ -1046,6 +1046,32 @@ Make's own creates (01.01 [269], 01.02 [162] / [167], 01.03 [67], 01.04 [12]) st
 closets on no project, the per-site merge worklist with a suggested keeper, sites ranked). Numbers and the run:
 docs/locations.md "Status from the 2026-11-17 exports".
 
+**22.02 v4 "no-site create" (2026-11-19) — a project with no Site no longer blocks an add** ("sales folks are being
+blocked from creating MDF/IDFs using the custom modal because they don't have a site assigned yet when they first
+create a SOW … Need a quick fix. Should be code plus updating the scenario"). A STOP-GAP, not the rejected
+"project-scoped until Ops assigns the site" model and not the pick-a-site design below, which is still the plan.
+Blueprint `scratchpad/bp2202ns/tools/patch4.py` over the v3 "(sub survey add v3)" blueprint → "22.02 … (no-site
+create v4)"; import INTO the scenario so hook 2870027 stays. Both flows (project page; survey page, ids +100): the
+"site?" router [24] / [124] now has four routes, run in order — 0: [3] / [103] 422 `no-site`, now only for `list` /
+`ensure-default`; 1 (new): [40] / [140] search the PROJECT's MDF/IDFs → [41] / [141] set the project's Site on each
+one that has none (found one, `field_2848` blank, not merged); 2: the existing flow, unchanged; 3 (new, no site AND
+`action = create`): a clone of [4] [5] [13] [21] [14]–[20] (ids +200) that searches the project's MDF/IDFs
+(`field_1648`), numbers and checks the ## on the project whatever `numberScope` says, creates with NO `field_2848`,
+and answers `{ ok, created, id, number, type, surveyNotesSaved, siteMissing: true }`. Route 1 is how those MDF/IDFs
+get their Site: the first 22.02 call for the project AFTER Ops sets its Site (any action) stamps them before the
+site search runs, so the site's numbering and HEADEND checks see them. Nothing fires when the Site is set — a project
+nobody adds to again keeps site-less MDF/IDFs until `tools/mdf_site_worklist.py`'s backfill (the same list Make's
+own creates 01.01 / 01.02 / 01.03 / 01.04 feed). NOT run live yet: the new routes use only modules and expressions
+already live in this scenario, but the import and a first no-site create have not been seen. Bundle
+(`mdf-site-tools.js openAdd`): a `siteMissing` reply is a plain success ("It is on this project now." on the sales /
+sub pages; on the site pages "This project has no Site yet, so it is on this project only. It joins the site once the
+project has one."); on the site pages (Build SOW, Reconcile Bids, Manage Deployment — `pageGridKey` ≠ `gridKey`) the
+window also lists the page's own project MDF/IDFs that the site grid lacks ("on this project · not on a site yet")
+and prefills / checks the ## against them too. The 422 `no-site` → native-form fallback stays for a 22.02 older than
+v4. **Once v4 is imported the native "Add MDF/IDF" pages + menus named below can be deleted.** For a login ON the
+site route (Micah) the worksheet reads the site grid, so a site-less MDF/IDF does not show there until it has its
+Site. Tests: the no-Site blocks in `tests/misc/test-mdf-site-tools.js` and `tests/misc/test-mdf-project-add.js`.
+
 **A project often has NO site when its closets are made (2026-11-17 — "a sales person … can create a project
 without a site and the ops team assigns a site when the project comes across"; no address exists at SOW creation)**:
 22.02 refuses such a project (422 `no-site`), so the add window would have blocked sales. `openAdd` now takes

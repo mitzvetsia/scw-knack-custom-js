@@ -460,6 +460,12 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   surveyRequest (label), numberScope: 'project' (## numbered / checked on the project, not the
   //   site), surveyNotes (a stamped "[MM/DD/YYYY · SR1145] text" entry → field_2457) and lifecycle
   //   'proposed'; the patched 22.02 answers surveyNotesSaved: true (absent = the page appends it).
+  //   v4 "no-site create" (2026-11-19): a create on a project with NO Site is no longer refused —
+  //   the MDF/IDF is made on the project alone (no field_2848), numbered and checked on the project,
+  //   and the reply adds siteMissing: true. Every call for a project that HAS a Site first gives
+  //   that Site to the project's MDF/IDFs that have none. list / ensure-default still answer 422
+  //   no-site; a 22.02 older than v4 answers it for a create too (the window then follows the
+  //   page's native add form when one is there).
   MAKE_MDF_IDF_WEBHOOK: "https://hook.us1.make.com/16im79b6xkk64bf4tmzu3orj6vkv9udk",
   // 22.03 | MDF-IDF | MDF/IDF merge -> move connected records to keeper — POST
   //   { runId, keeperId, loserIds: [ids], keeperLabel?, loserLabels?, projectId?, triggeredBy?, source? }

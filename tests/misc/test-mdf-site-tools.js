@@ -149,6 +149,41 @@ const $$ = (s) => Array.from(document.querySelectorAll(s));
   runTimers(); await flush();
   ok(fetches >= 1 && refreshed.indexOf('view_3962') >= 0, 'the site grid and the worksheet are re-read');
   ok(pageFetches >= 1, "the page's own closet grid is re-read too (the new closet shows without a reload)");
+
+  // ── a project with NO Site yet (2026-11-19): 22.02 v4 creates on the project alone ──
+  // The site grid is empty for such a project; its own MDF/IDFs sit on the page's project grid.
+  const keepSite = gridModels;
+  gridModels = [];
+  window.Knack.views.view_3577.model.data.models = [rec('ph', 'HEADEND', '', 'Front office'), rec('p2', 'IDF', 2, 'Dock'),
+    rec('pm', 'IDF', 5, 'Gone', { lifecycle: 'merged' })];
+  posts = []; timers.length = 0;
+  T.openAdd({ viewKey: 'view_3962', gridKey: 'view_4166', pageGridKey: 'view_3577' });
+  const nsRows = $$('.scw-mst-list .scw-mst-row');
+  ok(nsRows.length === 2 && nsRows.every((r) => /on this project · not on a site yet/.test(r.textContent)),
+    "no Site yet: the window lists the project's own live MDF/IDFs, marked as not on a site");
+  ok($('[data-in="number"]').value === '3', "the ## is prefilled past the project's own IDFs");
+  $('[data-in="number"]').value = '2';
+  $('[data-in="number"]').dispatchEvent(new window.Event('input'));
+  ok(/IDF 02 already exists on this project/.test($('.scw-mst-note').textContent), 'a ## taken by a project-only IDF is named as on this project');
+  $('[data-in="number"]').value = '3';
+  $('[data-in="number"]').dispatchEvent(new window.Event('input'));
+  reply = { status: 200, body: '{"ok": true, "created": true, "id": "new9", "number": "3", "type": "IDF", "surveyNotesSaved": false, "siteMissing": true}' };
+  $('[data-act="add"]').click();
+  await flush(); await flush();
+  ok(posts.length === 1 && posts[0].body.action === 'create' && posts[0].body.projectId === PID, 'the create goes out as usual');
+  ok(!$('.scw-mst-overlay') && /Added IDF 03\. This project has no Site yet, so it is on this project only\. It joins the site once the project has one\./
+    .test(($('.scw-mst-toast') || {}).textContent || ''), 'a siteMissing reply closes the window and says where the MDF/IDF is');
+  timers.length = 0;
+  // a sited project: an MDF/IDF the site grid already has is not listed twice
+  gridModels = keepSite;
+  window.Knack.views.view_3577.model.data.models = [keepSite[1], rec('p8', 'IDF', 8, 'Annex')];
+  T.openAdd({ viewKey: 'view_3962', gridKey: 'view_4166', pageGridKey: 'view_3577' });
+  const mixRows = $$('.scw-mst-list .scw-mst-row');
+  ok(mixRows.length === 5 && mixRows.filter((r) => /not on a site yet/.test(r.textContent)).length === 1 &&
+     $('[data-in="number"]').value === '9',
+    'a project MDF/IDF the site grid lacks is added once; one the site grid has is not repeated');
+  $('[data-act="cancel"]').click();
+  reply = { status: 200, body: '{"ok": true, "created": true, "id": "new1", "number": "4", "type": "IDF"}' };
   delete window.Knack.views.view_3577;
 
   // HEADEND: no ##
